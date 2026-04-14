@@ -22,6 +22,15 @@ class Compiler:
         self.nodes: list[dict] = []
         self.edges: list[dict] = []
         self.guest_names: dict[str, str] = {}
+        # Load URL map (title -> real Lenny URL) if available
+        self.url_map: dict[str, str] = {}
+        url_map_path = wiki_path.parent / "url_map.json"
+        if url_map_path.exists():
+            try:
+                self.url_map = json.loads(url_map_path.read_text(encoding="utf-8"))
+                logger.info("Loaded %d URLs from url_map.json", len(self.url_map))
+            except Exception as e:
+                logger.warning("Failed to load url_map.json: %s", e)
 
     async def run_all(self):
         logger.info("=== PASS 1: Structure Extraction ===")
@@ -87,11 +96,20 @@ class Compiler:
             if not title:
                 continue
 
-            node_id = self._to_id(title)
+            # Source IDs are prefixed with "ep-" to prevent collision with
+            # guest nodes (some episodes have titles that are just the guest
+            # name, e.g. "Jenny Wen", which would clash with the guest node).
+            slug = self._to_id(title)
+            node_id = f"ep-{slug}"
             source_type = source_type_by_idx[i] if i < len(source_type_by_idx) else "source"
 
-            # Construct Lenny's Substack URL from title (Substack slug convention)
-            lenny_url = f"https://www.lennysnewsletter.com/p/{node_id}"
+            # Look up real Lenny URL from url_map (built by scripts/fetch_urls.py).
+            # url_map keys use the raw slug (no ep- prefix) so it stays human-readable.
+            # Falls back to a Google site-search if not found, so it always works.
+            import urllib.parse as _up
+            lenny_url = self.url_map.get(slug) or (
+                f"https://www.google.com/search?q=site%3Alennysnewsletter.com+{_up.quote(title)}"
+            )
 
             if not any(n["id"] == node_id for n in self.nodes):
                 self.nodes.append({
@@ -207,18 +225,14 @@ class Compiler:
             logger.warning("Failed to read %s: %s", path, e)
             return
 
-        headers = re.findall(r"^#{1,3}\s+(.+)$", content, re.MULTILINE)
-
-        file_id = self._to_id(path.stem)
-        if not any(n["id"] == file_id for n in self.nodes):
-            title = headers[0] if headers else path.stem.replace("-", " ").title()
-            self.nodes.append({
-                "id": file_id,
-                "type": "source",
-                "title": title,
-                "source_type": source_type,
-                "file": str(path.name),
-            })
+        # NOTE: We deliberately do NOT create source nodes here. All source
+        # nodes come from index.json via _extract_from_index, which has
+        # proper titles, dates, and url_map lookups. Creating filename-based
+        # source nodes here would duplicate them with the wrong title (the
+        # filename stem is just the guest name like "boris-cherny.md").
+        # This function is kept as a hook for future structural scans
+        # (e.g., extracting headers from the markdown body).
+        _ = re.findall(r"^#{1,3}\s+(.+)$", content, re.MULTILINE)
 
     async def pass2_semantic(self):
         """Use LLM (Claude or Ollama) to extract concepts, relationships, contradictions."""
