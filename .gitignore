@@ -5,8 +5,25 @@
 knowledge/raw/
 knowledge/wiki/concepts/
 knowledge/wiki/guests/
+knowledge/wiki/sources/
 knowledge/wiki/domains/
 knowledge/wiki/tensions/
 knowledge/wiki/index.md
 knowledge/wiki/log.md
 knowledge/GRAPH_REPORT.md
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Frontend build artifacts
+frontend/node_modules/
+frontend/dist/
+frontend/tsconfig.app.tsbuildinfo
+frontend/tsconfig.node.tsbuildinfo
+
+# OS / editor
+.DS_Store
+Thumbs.db
