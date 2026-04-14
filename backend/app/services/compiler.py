@@ -90,6 +90,9 @@ class Compiler:
             node_id = self._to_id(title)
             source_type = source_type_by_idx[i] if i < len(source_type_by_idx) else "source"
 
+            # Construct Lenny's Substack URL from title (Substack slug convention)
+            lenny_url = f"https://www.lennysnewsletter.com/p/{node_id}"
+
             if not any(n["id"] == node_id for n in self.nodes):
                 self.nodes.append({
                     "id": node_id,
@@ -98,6 +101,8 @@ class Compiler:
                     "source_type": source_type,
                     "date": item.get("date", item.get("published_at", "")),
                     "word_count": item.get("word_count", 0),
+                    "description": item.get("description", item.get("subtitle", "")),
+                    "url": lenny_url,
                 })
 
             guest = item.get("guest", item.get("guests", ""))
@@ -463,7 +468,7 @@ Extract 3-8 key concepts. Focus on named frameworks, methodologies, and principl
         """Write all nodes as wiki pages with frontmatter."""
         now = datetime.now(timezone.utc).isoformat()
 
-        for subdir in ["concepts", "guests", "domains", "tensions"]:
+        for subdir in ["concepts", "guests", "domains", "tensions", "sources"]:
             (self.wiki_path / subdir).mkdir(parents=True, exist_ok=True)
 
         edges_by_source: dict[str, list[dict]] = defaultdict(list)
@@ -514,6 +519,31 @@ Extract 3-8 key concepts. Focus on named frameworks, methodologies, and principl
                 }
                 body = f"{n['title']} - guest on Lenny's Podcast."
                 path = self.wiki_path / "guests" / f"{n['id']}.md"
+                path.write_text(inject_frontmatter(meta, body), encoding="utf-8")
+
+        # Source (episode) pages
+        for n in self.nodes:
+            if n["type"] == "source":
+                guests_for_source = list(set(
+                    e["source"] for e in edges_by_target.get(n["id"], [])
+                    if e["type"] == "appears_in"
+                ))
+                concepts_in_source = list(set(
+                    e["source"] for e in edges_by_target.get(n["id"], [])
+                    if e["type"] == "mentioned_in"
+                ))
+                meta = {
+                    "title": n["title"],
+                    "type": "source",
+                    "source_type": n.get("source_type", "podcast"),
+                    "date": n.get("date", ""),
+                    "url": n.get("url", ""),
+                    "word_count": n.get("word_count", 0),
+                    "guests": guests_for_source[:5],
+                    "concepts": concepts_in_source[:10],
+                }
+                body = n.get("description", "") or f"{n['title']} - Lenny's Newsletter/Podcast content."
+                path = self.wiki_path / "sources" / f"{n['id']}.md"
                 path.write_text(inject_frontmatter(meta, body), encoding="utf-8")
 
         # Domain pages

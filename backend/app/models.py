@@ -18,6 +18,8 @@ class GraphNode(BaseModel):
     date: str = ""
     known_for: list[str] = Field(default_factory=list)
     color: str = ""
+    url: str = ""  # external link (e.g., Lenny's Substack URL for sources)
+    description: str = ""
 
 
 class GraphEdge(BaseModel):

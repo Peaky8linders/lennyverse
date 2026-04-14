@@ -31,7 +31,7 @@ function GraphCanvasInner({ graph, hiddenDomains, onNodeClick, selectedNodeId }:
 
   const nodes = useMemo<Node[]>(() => {
     return graph.nodes
-      .filter((n) => !hiddenDomains.has(n.domain))
+      .filter((n) => n.type !== 'source' && !hiddenDomains.has(n.domain))
       .map((n) => ({
         id: n.id,
         type: n.type === 'guest' ? 'guest' : 'concept',

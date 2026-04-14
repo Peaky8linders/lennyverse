@@ -10,6 +10,8 @@ export interface GraphNode {
   date: string
   known_for: string[]
   color: string
+  url: string
+  description: string
 }
 
 export interface GraphEdge {

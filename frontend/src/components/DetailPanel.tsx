@@ -71,19 +71,87 @@ export default function DetailPanel({ nodeId, fetchDetail, onClose, onNavigate }
                   {detail.content || 'No summary available.'}
                 </div>
 
-                {detail.connected_nodes.length > 0 && (
+                {/* For source nodes: prominent Listen on Lenny button */}
+                {detail.type === 'source' && (
+                  <a
+                    href={(detail.frontmatter?.url as string) || `https://www.lennysnewsletter.com/p/${detail.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 w-full mb-4 px-4 py-3 rounded-lg bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 text-white font-semibold text-sm transition-all shadow-lg shadow-purple-900/30"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                    Listen on Lenny's Newsletter
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M7 17L17 7M7 7h10v10" />
+                    </svg>
+                  </a>
+                )}
+
+                {/* Episode cards (for guest nodes or any node with source connections) */}
+                {detail.connected_nodes.filter((cn) => cn.type === 'source').length > 0 && (
+                  <div className="mb-4">
+                    <h3 className="text-sm font-semibold text-gray-400 mb-2 flex items-center gap-2">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="text-purple-400">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                      Episodes ({detail.connected_nodes.filter((cn) => cn.type === 'source').length})
+                    </h3>
+                    <div className="space-y-2">
+                      {detail.connected_nodes
+                        .filter((cn) => cn.type === 'source')
+                        .slice(0, 10)
+                        .map((cn) => (
+                          <a
+                            key={cn.id}
+                            href={cn.url || `https://www.lennysnewsletter.com/p/${cn.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="group block p-3 rounded-lg bg-gradient-to-br from-purple-950/40 to-gray-900 border border-purple-900/40 hover:border-purple-500/60 hover:from-purple-900/40 transition-all"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono uppercase tracking-wide">
+                                    {cn.source_type || 'podcast'}
+                                  </span>
+                                  {cn.date && (
+                                    <span className="text-[10px] text-gray-500">{cn.date}</span>
+                                  )}
+                                </div>
+                                <div className="text-xs font-medium text-white leading-snug line-clamp-2 group-hover:text-purple-200 transition-colors">
+                                  {cn.label}
+                                </div>
+                              </div>
+                              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center group-hover:bg-purple-500/40 transition-colors">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="text-purple-300 ml-0.5">
+                                  <path d="M8 5v14l11-7z" />
+                                </svg>
+                              </div>
+                            </div>
+                          </a>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Non-source connections (concepts, guests) */}
+                {detail.connected_nodes.filter((cn) => cn.type !== 'source').length > 0 && (
                   <div className="mb-4">
                     <h3 className="text-sm font-semibold text-gray-400 mb-2">Connections</h3>
                     <div className="flex flex-wrap gap-2">
-                      {detail.connected_nodes.map((cn) => (
-                        <button
-                          key={cn.id}
-                          onClick={() => onNavigate(cn.id)}
-                          className="text-xs px-2 py-1 rounded-full bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors border border-gray-700"
-                        >
-                          {cn.label}
-                        </button>
-                      ))}
+                      {detail.connected_nodes
+                        .filter((cn) => cn.type !== 'source')
+                        .map((cn) => (
+                          <button
+                            key={cn.id}
+                            onClick={() => onNavigate(cn.id)}
+                            className="text-xs px-2 py-1 rounded-full bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors border border-gray-700"
+                          >
+                            {cn.label}
+                          </button>
+                        ))}
                     </div>
                   </div>
                 )}

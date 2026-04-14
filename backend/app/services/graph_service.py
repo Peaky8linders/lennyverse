@@ -128,7 +128,24 @@ class GraphService:
                         type="appears_in", provenance="EXTRACTED",
                     ))
 
-        # 4. Filter edges to only reference existing nodes
+        # 4. Read source (episode) pages
+        sources_dir = self.wiki_path / "sources"
+        if sources_dir.exists():
+            for f in sorted(sources_dir.glob("*.md")):
+                meta, body = read_wiki_page(f)
+                if not meta.get("title"):
+                    continue
+                nid = f.stem
+                nodes.append(GraphNode(
+                    id=nid, type="source", label=meta["title"],
+                    source_type=meta.get("source_type", "podcast"),
+                    date=str(meta.get("date", "")),
+                    url=meta.get("url", ""),
+                    description=body[:200] if body else "",
+                ))
+                node_ids.add(nid)
+
+        # 5. Filter edges to only reference existing nodes
         edges = [e for e in edges if e.source in node_ids and e.target in node_ids]
 
         # 5. Compute connection counts
@@ -168,7 +185,7 @@ class GraphService:
 
     def get_node_detail(self, node_id: str) -> NodeDetail | None:
         """Get detailed info for a single node."""
-        for subdir in ["concepts", "guests", "domains", "tensions"]:
+        for subdir in ["concepts", "guests", "domains", "tensions", "sources"]:
             path = self.wiki_path / subdir / f"{node_id}.md"
             if path.exists():
                 meta, body = read_wiki_page(path)
