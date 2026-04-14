@@ -4,13 +4,20 @@
 
 A zoomable, pannable canvas mapping every concept, framework, and debate from Lenny's Newsletter and Podcast. Built on Karpathy's LLM wiki pattern and graphify's extraction pipeline.
 
+![LennyVerse graph: concept pills with category icons arranged around an arc of 50 guest headshots, edges connecting guests to the concepts they teach](frontend/public/screenshots/hero.png)
+
+**Zoomed to the AI-era guest cluster** — Keith Rabois, Claire Vo, Simon Willison, Amol Avasare, Boris Cherny, Jessica Fain, Jeetu Patel, Jenny Wen and Sherwin Wu, all teaching into the Career Development / Analysis / Measurement concept pills on either side:
+
+![Zoomed view of the guest arc showing AI-era podcast guest headshots connected to concept pills](frontend/public/screenshots/ai-guests.png)
+
 ![Stack: Vite + React 18 + TypeScript + Tailwind + React Flow + Framer Motion | FastAPI + Python 3.12 + Claude API](https://img.shields.io/badge/stack-vite%20%7C%20react%20%7C%20fastapi%20%7C%20claude-blue)
 
 ## What it does
 
+- **Real guest headshots on every node** — pulled from Lenny's podcast RSS feed (`api.substack.com/feed/podcast/10845.rss`). Each `<itunes:image>` contains the guest's face, so `scripts/fetch_guest_images.py` slugifies 286 guests and hotlinks 338 episode covers straight from Substack's CDN. (Same trick [LennyRPG](https://www.lennysnewsletter.com/p/how-i-built-lennyrpg) used for its avatars.)
 - **131 nodes** auto-extracted from Lenny's free starter pack: 50 real guests, 19 frameworks/concepts, 62 episodes
 - **180 edges** connecting guests → concepts → episodes (`teaches`, `mentioned_in`, `builds_on`, `appears_in`)
-- **Click any guest** → side panel opens with their episode cards, each a purple gradient link that opens the real Lenny's Substack URL in a new tab
+- **Click any guest** → side panel opens with their episode cards, each showing the real episode cover art and linking to Lenny's Substack post
 - **Click any concept** → see which guests teach it, related concepts, and contradictions
 - **Ask Claude** → grounded Q&A over the compiled wiki, streamed via SSE
 

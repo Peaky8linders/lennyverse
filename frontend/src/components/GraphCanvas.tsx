@@ -91,6 +91,16 @@ function GraphCanvasInner({ graph, onNodeClick, selectedNodeId }: Props) {
       timers.push(window.setTimeout(runUpdate, d))
     })
     timers.push(window.setTimeout(() => {
+      // ?focus=<slug1>,<slug2>,... zooms to just those nodes (used for screenshots)
+      const focusParam = new URLSearchParams(window.location.search).get('focus')
+      if (focusParam) {
+        const ids = new Set(focusParam.split(',').map((s) => s.trim()).filter(Boolean))
+        const targets = nodes.filter((n) => ids.has(n.id))
+        if (targets.length > 0) {
+          rf.fitView({ nodes: targets.map((n) => ({ id: n.id })), padding: 0.25, duration: 400 })
+          return
+        }
+      }
       rf.fitView({ padding: 0.2, duration: 400 })
     }, 750))
     return () => timers.forEach((t) => window.clearTimeout(t))

@@ -27,3 +27,4 @@ frontend/tsconfig.node.tsbuildinfo
 # OS / editor
 .DS_Store
 Thumbs.db
+.claude/
