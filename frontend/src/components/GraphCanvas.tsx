@@ -20,18 +20,17 @@ const nodeTypes = { concept: ConceptNode, guest: GuestNode }
 
 interface Props {
   graph: GraphResponse
-  hiddenDomains: Set<string>
   onNodeClick: (nodeId: string) => void
   selectedNodeId: string | null
 }
 
-function GraphCanvasInner({ graph, hiddenDomains, onNodeClick, selectedNodeId }: Props) {
+function GraphCanvasInner({ graph, onNodeClick, selectedNodeId }: Props) {
   const rf = useReactFlow()
   const storeApi = useStoreApi()
 
   const nodes = useMemo<Node[]>(() => {
     return graph.nodes
-      .filter((n) => n.type !== 'source' && !hiddenDomains.has(n.domain))
+      .filter((n) => n.type !== 'source')
       .map((n) => ({
         id: n.id,
         type: n.type === 'guest' ? 'guest' : 'concept',
@@ -46,7 +45,7 @@ function GraphCanvasInner({ graph, hiddenDomains, onNodeClick, selectedNodeId }:
         },
         selected: n.id === selectedNodeId,
       }))
-  }, [graph, hiddenDomains, selectedNodeId])
+  }, [graph, selectedNodeId])
 
   const edges = useMemo<Edge[]>(() => {
     const visibleIds = new Set(nodes.map((n) => n.id))
@@ -78,9 +77,9 @@ function GraphCanvasInner({ graph, hiddenDomains, onNodeClick, selectedNodeId }:
     const timers: number[] = []
     const runUpdate = () => {
       const state = storeApi.getState()
-      const updates = new Map<string, { id: string; nodeElement: HTMLElement; force: true }>()
+      const updates = new Map<string, { id: string; nodeElement: HTMLDivElement; force: true }>()
       nodes.forEach((n) => {
-        const el = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${n.id}"]`)
+        const el = document.querySelector<HTMLDivElement>(`.react-flow__node[data-id="${n.id}"]`)
         if (el) updates.set(n.id, { id: n.id, nodeElement: el, force: true })
       })
       if (updates.size > 0) {

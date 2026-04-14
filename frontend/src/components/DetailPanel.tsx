@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { NodeDetail } from '../types/graph'
 import AskClaude from './AskClaude'
+import { useGuestImages } from '../hooks/useGuestImages'
 
 interface Props {
   nodeId: string | null
@@ -13,6 +14,7 @@ interface Props {
 export default function DetailPanel({ nodeId, fetchDetail, onClose, onNavigate }: Props) {
   const [detail, setDetail] = useState<NodeDetail | null>(null)
   const [loading, setLoading] = useState(false)
+  const { getEpisodeImage } = useGuestImages()
 
   useEffect(() => {
     if (!nodeId) {
@@ -102,36 +104,75 @@ export default function DetailPanel({ nodeId, fetchDetail, onClose, onNavigate }
                       {detail.connected_nodes
                         .filter((cn) => cn.type === 'source')
                         .slice(0, 10)
-                        .map((cn) => (
+                        .map((cn) => {
+                          const epImg = getEpisodeImage(cn.id)
+                          const isNewsletter = (cn.source_type || 'podcast').toLowerCase() === 'newsletter'
+                          return (
                           <a
                             key={cn.id}
                             href={cn.url || `https://www.lennysnewsletter.com/p/${cn.id}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="group block p-3 rounded-lg bg-gradient-to-br from-purple-950/40 to-gray-900 border border-purple-900/40 hover:border-purple-500/60 hover:from-purple-900/40 transition-all"
+                            className="group flex items-stretch gap-3 p-3 rounded-lg bg-gradient-to-br from-purple-950/40 to-gray-900 border border-purple-900/40 hover:border-purple-500/60 hover:from-purple-900/40 transition-all"
                           >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono uppercase tracking-wide">
-                                    {cn.source_type || 'podcast'}
-                                  </span>
-                                  {cn.date && (
-                                    <span className="text-[10px] text-gray-500">{cn.date}</span>
-                                  )}
-                                </div>
-                                <div className="text-xs font-medium text-white leading-snug line-clamp-2 group-hover:text-purple-200 transition-colors">
-                                  {cn.label}
-                                </div>
+                            {/* Episode thumbnail tile — real cover art when available, icon fallback otherwise */}
+                            {epImg ? (
+                              <img
+                                src={epImg}
+                                alt=""
+                                onError={(e) => {
+                                  ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+                                }}
+                                className="flex-shrink-0 w-14 h-14 rounded-md object-cover border border-purple-500/40 shadow-inner"
+                                draggable={false}
+                              />
+                            ) : (
+                              <div
+                                className="flex-shrink-0 w-14 h-14 rounded-md flex items-center justify-center border border-purple-500/40 shadow-inner"
+                                style={{
+                                  background: isNewsletter
+                                    ? 'linear-gradient(135deg, #7e22ce, #4338ca)'
+                                    : 'linear-gradient(135deg, #a855f7, #6d28d9)',
+                                }}
+                              >
+                                {isNewsletter ? (
+                                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white">
+                                    <path d="M4 4h12a2 2 0 0 1 2 2v14H6a2 2 0 0 1-2-2z" />
+                                    <path d="M18 8h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2" />
+                                    <path d="M8 8h6M8 12h6M8 16h4" />
+                                  </svg>
+                                ) : (
+                                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white">
+                                    <rect x="9" y="3" width="6" height="12" rx="3" />
+                                    <path d="M5 11a7 7 0 0 0 14 0" />
+                                    <path d="M12 18v3M8 21h8" />
+                                  </svg>
+                                )}
                               </div>
-                              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center group-hover:bg-purple-500/40 transition-colors">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="text-purple-300 ml-0.5">
-                                  <path d="M8 5v14l11-7z" />
-                                </svg>
+                            )}
+
+                            <div className="flex-1 min-w-0 flex flex-col justify-center">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono uppercase tracking-wide">
+                                  {cn.source_type || 'podcast'}
+                                </span>
+                                {cn.date && (
+                                  <span className="text-[10px] text-gray-500">{cn.date}</span>
+                                )}
+                              </div>
+                              <div className="text-xs font-medium text-white leading-snug line-clamp-2 group-hover:text-purple-200 transition-colors">
+                                {cn.label}
                               </div>
                             </div>
+
+                            <div className="flex-shrink-0 self-center w-7 h-7 rounded-full bg-purple-500/20 flex items-center justify-center group-hover:bg-purple-500/40 transition-colors">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="text-purple-300 ml-0.5">
+                                <path d="M8 5v14l11-7z" />
+                              </svg>
+                            </div>
                           </a>
-                        ))}
+                          )
+                        })}
                     </div>
                   </div>
                 )}

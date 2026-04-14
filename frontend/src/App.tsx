@@ -3,12 +3,10 @@ import { useGraph } from './hooks/useGraph'
 import GraphCanvas from './components/GraphCanvas'
 import DetailPanel from './components/DetailPanel'
 import SearchBar from './components/SearchBar'
-import DomainFilters from './components/DomainFilters'
 
 export default function App() {
   const { graph, loading, error, fetchNodeDetail } = useGraph()
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-  const [hiddenDomains, setHiddenDomains] = useState<Set<string>>(new Set())
 
   const handleNodeClick = useCallback((nodeId: string) => {
     setSelectedNodeId(nodeId)
@@ -18,15 +16,6 @@ export default function App() {
     setSelectedNodeId(null)
   }, [])
 
-  const handleToggleDomain = useCallback((domain: string) => {
-    setHiddenDomains((prev) => {
-      const next = new Set(prev)
-      if (next.has(domain)) next.delete(domain)
-      else next.add(domain)
-      return next
-    })
-  }, [])
-
   return (
     <div className="h-screen flex flex-col bg-gray-950">
       <header className="flex items-center gap-4 px-6 py-3 border-b border-gray-800 bg-gray-950/80 backdrop-blur-sm z-40">
@@ -34,13 +23,6 @@ export default function App() {
           <span className="text-blue-400">Lenny</span>Verse
         </h1>
         {graph && <SearchBar nodes={graph.nodes} onSelect={handleNodeClick} />}
-        {graph && (
-          <DomainFilters
-            domains={graph.domains}
-            hidden={hiddenDomains}
-            onToggle={handleToggleDomain}
-          />
-        )}
         <div className="ml-auto text-xs text-gray-500">
           {graph ? `${graph.nodes.length} nodes · ${graph.edges.length} edges` : 'loading...'}
         </div>
@@ -71,7 +53,6 @@ export default function App() {
           <div className="absolute inset-0">
             <GraphCanvas
               graph={graph}
-              hiddenDomains={hiddenDomains}
               onNodeClick={handleNodeClick}
               selectedNodeId={selectedNodeId}
             />

@@ -1,16 +1,22 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { useGuestImages } from '../hooks/useGuestImages'
 
 interface GuestNodeData {
   label: string
   color: string
   known_for: string[]
   connections: number
+  id?: string
   [key: string]: unknown
 }
 
-function GuestNode({ data, selected }: NodeProps) {
+function GuestNode({ id, data, selected }: NodeProps) {
   const d = data as GuestNodeData
+  const { getGuestImage } = useGuestImages()
+  const imgUrl = getGuestImage(id)
+  const [imgOk, setImgOk] = useState(true)
+
   const initials = d.label
     .split(' ')
     .filter((w) => w && /[A-Za-z]/.test(w[0]))
@@ -22,32 +28,46 @@ function GuestNode({ data, selected }: NodeProps) {
   return (
     <div
       className={`
-        flex flex-col items-center gap-1 transition-all duration-200
+        flex flex-col items-center gap-2 transition-all duration-200
         ${selected ? 'scale-110' : 'hover:scale-105'}
       `}
       style={{ visibility: 'visible' }}
     >
       <Handle type="target" position={Position.Top} style={{ opacity: 0, width: 8, height: 8 }} />
       <div className="relative">
-        <div
-          className="w-14 h-14 rounded-full flex items-center justify-center text-sm font-bold text-white shadow-lg border-2"
-          style={{
-            background: `linear-gradient(135deg, #a855f788, #a855f744)`,
-            borderColor: '#a855f7',
-          }}
-        >
-          {initials}
-        </div>
+        {imgUrl && imgOk ? (
+          <img
+            src={imgUrl}
+            alt={d.label}
+            onError={() => setImgOk(false)}
+            className="w-20 h-20 rounded-full object-cover shadow-xl border-[3px]"
+            style={{ borderColor: '#c084fc' }}
+            draggable={false}
+          />
+        ) : (
+          <div
+            className="w-20 h-20 rounded-full flex items-center justify-center text-xl font-bold text-white shadow-xl border-[3px]"
+            style={{
+              background: `linear-gradient(135deg, #a855f7cc, #7e22ce88)`,
+              borderColor: '#c084fc',
+            }}
+          >
+            {initials}
+          </div>
+        )}
         {/* Play icon badge — indicates clickable episode content */}
-        <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-purple-500 border-2 border-gray-900 flex items-center justify-center shadow-md">
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" className="text-white ml-0.5">
+        <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-purple-500 border-2 border-gray-900 flex items-center justify-center shadow-md">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="text-white ml-0.5">
             <path d="M8 5v14l11-7z" />
           </svg>
         </div>
       </div>
-      <div className="text-xs text-gray-200 font-medium text-center max-w-[110px] truncate mt-1">
+      <div className="text-sm text-gray-100 font-semibold text-center max-w-[140px] truncate">
         {d.label}
       </div>
+      {d.connections > 0 && (
+        <div className="text-[10px] text-purple-300/80">{d.connections} episodes</div>
+      )}
       <Handle type="source" position={Position.Bottom} style={{ opacity: 0, width: 8, height: 8 }} />
     </div>
   )
