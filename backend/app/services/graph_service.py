@@ -69,7 +69,7 @@ class GraphService:
                 if not meta.get("title"):
                     continue
                 nid = f.stem
-                domain = meta.get("domain", "Uncategorized")
+                domain = meta.get("domain") or "Product Strategy"
                 nodes.append(GraphNode(
                     id=nid, type="concept", label=meta["title"],
                     domain=domain,

@@ -49,10 +49,9 @@ The compiler runs three passes, inspired by [graphify](https://github.com/safish
 
 - **Python 3.12**
 - **Node.js 20+**
-- **One LLM backend** (pick any in [LLM backends](#llm-backends)):
+- **One LLM backend** (see [LLM backends](#llm-backends) for the full story):
   - Anthropic Claude API key (richest graph, ~60s compile), **or**
-  - Local [Ollama](https://ollama.com) (free, private, CPU-bound), **or**
-  - Nothing at all — the fast structural compile (`compile_fast.py`) skips the semantic pass entirely
+  - Local [Ollama](https://ollama.com) (free, private, fast on Apple Silicon)
 
 ### 1. Clone and install
 
@@ -89,16 +88,14 @@ Pulls Lenny's podcast RSS feed, maps 286 guests and 338 episodes to their cover-
 
 ### 4. Compile the wiki
 
-Pick one of the three paths below — see [LLM backends](#llm-backends) for the full story:
+Pick one of the two paths below — see [LLM backends](#llm-backends) for the full story:
 
 ```bash
-# A) No LLM — structural + description-based extraction (~2s, ~130 nodes)
-python scripts/compile_fast.py
-
-# B) Anthropic Claude — full 3-pass compile with semantic extraction (~60s, richer graph)
+# A) Anthropic Claude — full 3-pass compile with semantic extraction (~60s, richest graph)
 ANTHROPIC_API_KEY=sk-... python scripts/compile.py
 
-# C) Local Ollama — same 3-pass compile, routed to llama3.2:3b on localhost
+# B) Local Ollama — same 3-pass compile, routed to your model of choice on localhost
+export OLLAMA_MODEL=qwen2.5:32b   # or llama3.1:8b / qwen2.5:14b / llama3.1:70b — see LLM backends
 python scripts/compile.py
 ```
 
@@ -156,37 +153,54 @@ cd backend && uvicorn app.main:app --reload --port 8080
 
 Compilation runs 5 files in parallel, `/api/explore` Q&A uses `claude-sonnet-4-6-20250514` by default. Override the model IDs via `COMPILE_MODEL` / `EXPLORE_MODEL` if you want to pin something else.
 
-### Option B — Ollama (local, free, slow on CPU)
+### Option B — Ollama (local, free, fast on Apple Silicon)
 
-1. **Install Ollama** — https://ollama.com (macOS, Linux, Windows). It auto-starts a daemon at `http://localhost:11434`.
-2. **Pull the default model** (other models work too — see `OLLAMA_MODEL`):
+On an Apple Silicon MacBook (M1/M2/M3/M4), Ollama auto-uses Metal and gets within spitting distance of API quality — no egress cost, no rate limits, and your transcripts never leave the machine.
+
+1. **Install Ollama** — https://ollama.com (macOS, Linux, Windows). The macOS installer auto-starts a daemon at `http://localhost:11434` and hooks into Metal.
+2. **Pick a model based on unified memory** — Ollama on Apple Silicon is bound by RAM, not VRAM, because the SoC is unified. A rough decision table (Q4_K_M quants unless noted):
+
+   | Your MacBook | Recommended model | Size on disk | Why |
+   |---|---|---|---|
+   | 8–16 GB | `llama3.1:8b` | ~4.7 GB | Fast, decent concept extraction, fits in 16 GB comfortably |
+   | 16–24 GB | `qwen2.5:14b` | ~9 GB | Much stronger reasoning and topic labeling than the 8B tier |
+   | 32 GB | `qwen2.5:32b` **(recommended default)** | ~20 GB | Best quality-per-watt; comparable to `claude-haiku` for this task |
+   | 64 GB (M2/M3 Max, M2 Ultra) | `llama3.1:70b` or `qwen2.5:72b` | ~40 GB | Approaches `claude-sonnet` quality on semantic extraction |
+   | 128 GB+ (M3/M4 Max, M2/M3 Ultra) | `llama3.3:70b-instruct-q8_0` | ~75 GB | Higher-precision quant, richer concept lists |
+
+   The starter pack's 60 files fit comfortably in a ~12k-token transcript window, so bigger models don't slow you down much past 30–40B — they're limited by tokens/sec, not by context reloading.
+
+3. **Pull the model**:
    ```bash
-   ollama pull llama3.2:3b
+   ollama pull qwen2.5:32b        # swap for whichever row above matches your Mac
    ```
-3. **Sanity check** — `curl http://localhost:11434/api/tags` should list `llama3.2:3b`.
-4. **Compile** with no `ANTHROPIC_API_KEY` in the environment:
+4. **Sanity check** — `curl http://localhost:11434/api/tags` should list it. `ollama ps` should show `size_vram > 0` once the daemon is actively serving.
+5. **Compile** with no `ANTHROPIC_API_KEY` set, pointing at your chosen model:
    ```bash
-   unset ANTHROPIC_API_KEY                 # make sure the Anthropic path is disabled
+   unset ANTHROPIC_API_KEY         # make sure the Anthropic path is disabled
+   export OLLAMA_MODEL=qwen2.5:32b
    python scripts/compile.py
    ```
-   The compiler drops to `concurrency=1` for Ollama (one request at a time) and truncates transcripts to 6000 chars to fit the model's context. On a CPU, expect **~5–15 minutes** for the 60-file starter pack with `llama3.2:3b`. A larger model (`qwen3:30b-a3b`, `llama3.1:8b`) gives better concepts but takes longer.
-5. **Run the backend** — same command as Option A. `/api/explore` Q&A will also use Ollama, which is plenty fast for single-question streaming.
+   The compiler runs `concurrency=1` for Ollama (one request at a time) and truncates each transcript to 6000 chars so even 8B models handle them cleanly. Rough wall times for the 60-file starter pack on Apple Silicon with Metal:
 
-Point at a different Ollama host or model via env vars:
+   | Model | M1 Pro (16 GB) | M2 Max (32 GB) | M3 Max (64 GB) |
+   |---|---|---|---|
+   | `llama3.1:8b` | ~3 min | ~2 min | ~1.5 min |
+   | `qwen2.5:14b` | ~6 min | ~3 min | ~2 min |
+   | `qwen2.5:32b` | OOM risk | ~7 min | ~4 min |
+   | `llama3.1:70b` | — | swap thrashes | ~14 min |
+
+   CPU-only (no GPU, no Metal) the same run takes **5–15× longer** — if you see that, check `ollama ps` for `size_vram`.
+
+6. **Run the backend** — same command as Option A. `/api/explore` Q&A will also use Ollama, plenty fast for single-question streaming at any of the tiers above.
+
+Point at a remote Ollama host or override the model per-run:
 
 ```bash
 export OLLAMA_URL=http://192.168.1.10:11434
-export OLLAMA_MODEL=qwen3:30b-a3b
+export OLLAMA_MODEL=llama3.1:70b
 python scripts/compile.py
 ```
-
-### Option C — No LLM at all (fastest bootstrap)
-
-```bash
-python scripts/compile_fast.py
-```
-
-This runs **Pass 1** (structural extraction from `index.json`) and **Pass 3** (Leiden community detection) only, skipping the semantic LLM pass. You get ~130 nodes and ~180 edges in ~2 seconds — enough to populate the canvas and see the guest arc light up with real headshots. `/api/explore` will return an error without a configured LLM backend, but the graph and detail panel work fully.
 
 ## Troubleshooting
 
