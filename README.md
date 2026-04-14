@@ -53,59 +53,146 @@ The compiler runs three passes, inspired by [graphify](https://github.com/safish
 
 ### Prerequisites
 
-- Python 3.12
-- Node.js 20+
-- (Optional) Anthropic API key for semantic extraction + Q&A
+- **Python 3.12**
+- **Node.js 20+**
+- **One LLM backend** (pick any in [LLM backends](#llm-backends)):
+  - Anthropic Claude API key (richest graph, ~60s compile), **or**
+  - Local [Ollama](https://ollama.com) (free, private, CPU-bound), **or**
+  - Nothing at all — the fast structural compile (`compile_fast.py`) skips the semantic pass entirely
 
-### 1. Download Lenny's starter pack
+### 1. Clone and install
+
+```bash
+git clone https://github.com/Peaky8linders/lennyverse
+cd lennyverse
+
+# Backend
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r backend/requirements.txt
+
+# Frontend
+cd frontend && npm install && cd ..
+```
+
+### 2. Get Lenny's starter pack
 
 Lenny's license forbids redistributing the raw data, so you download it yourself:
 
 ```bash
 git clone https://github.com/LennysNewsletter/lennys-newsletterpodcastdata /tmp/lennys-data
-```
-
-Or visit [lennysdata.com](https://www.lennysdata.com) for a zip.
-
-### 2. Install backend + seed the data
-
-```bash
-cd lennyverse/backend
-pip install -r requirements.txt
-cd ..
 python scripts/seed_raw.py /tmp/lennys-data
 ```
 
-### 3. Compile the wiki
+This copies 50 podcast transcripts + 10 newsletter posts + `index.json` into `knowledge/raw/`.
+
+### 3. Fetch guest headshots (one-time, ~5s)
 
 ```bash
-# Without API key (structural + description-based extraction, instant)
-python scripts/compile.py
+python scripts/fetch_guest_images.py
+```
 
-# With Claude semantic extraction (recommended, richer graph, ~60s)
+Pulls Lenny's podcast RSS feed, maps 286 guests and 338 episodes to their cover-art URLs, and writes `frontend/public/guest_images.json` + `episode_images.json`. These are what the graph nodes and episode cards render.
+
+### 4. Compile the wiki
+
+Pick one of the three paths below — see [LLM backends](#llm-backends) for the full story:
+
+```bash
+# A) No LLM — structural + description-based extraction (~2s, ~130 nodes)
+python scripts/compile_fast.py
+
+# B) Anthropic Claude — full 3-pass compile with semantic extraction (~60s, richer graph)
 ANTHROPIC_API_KEY=sk-... python scripts/compile.py
+
+# C) Local Ollama — same 3-pass compile, routed to llama3.2:3b on localhost
+python scripts/compile.py
 ```
 
-Output: ~130 nodes, ~180 edges, written to `knowledge/wiki/`.
+Output goes to `knowledge/wiki/` (concepts, guests, sources, domains, tensions).
 
-### 4. Run the app
+### 5. Run the app
 
-**Backend** (port 8080):
+Two terminals:
 
 ```bash
-cd lennyverse/backend
+# Terminal 1 — backend on :8080
+cd backend
 uvicorn app.main:app --reload --port 8080
-```
 
-**Frontend** (port 5173):
-
-```bash
-cd lennyverse/frontend
-npm install
+# Terminal 2 — frontend on :5173
+cd frontend
 npm run dev
 ```
 
-Open http://localhost:5173.
+Open **http://localhost:5173**. If 5173 is busy, Vite falls through to 5174. Vite's dev server proxies `/api/*` to the backend on `127.0.0.1:8080`, so you don't need to set any URL env vars for local dev.
+
+## Usage
+
+Once both servers are up:
+
+- **Pan** — drag the canvas background
+- **Zoom** — mouse wheel, or the `+` / `−` buttons in the bottom-right controls
+- **Fit view** — click the fit icon in the controls (useful after you've zoomed around)
+- **Search** — top-left search bar filters guests and concepts by name; hit a result to jump to it
+- **Minimap** — bottom-right overview for orientation on larger graphs
+- **Click a guest node** → the detail panel slides in from the right with their `known_for` list and a gallery of episode cards. Each card has the real episode cover as a thumbnail and opens the episode on `lennysnewsletter.com` in a new tab.
+- **Click a concept node** → the detail panel shows which guests teach it, the domain it belongs to, related concepts, and any `contrasts_with` tensions
+- **Ask Claude** — bottom-right of the detail panel. Type a question grounded in the currently-selected node; answers stream via SSE from `/api/explore` and cite the wiki pages they're drawn from. Requires an LLM backend (Anthropic or Ollama).
+- **Deep-link a zoomed sub-graph** — append `?focus=<slug1>,<slug2>,...` to the URL and the canvas fits only those nodes on load. Useful for sharing views or reproducing screenshots:
+  ```
+  http://localhost:5173/?focus=keith-rabois,claire-vo,simon-willison,boris-cherny
+  ```
+
+## LLM backends
+
+LennyVerse's compiler and `/api/explore` endpoint use `backend/app/services/llm_client.py`, which picks a backend at runtime based on env vars:
+
+| You set | Backend used | Fallback when unreachable |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | Anthropic Claude | _none — fails fast_ |
+| _(nothing)_ | Ollama at `$OLLAMA_URL` | _none — skip semantic extraction_ |
+
+### Option A — Anthropic Claude (fastest + richest)
+
+```bash
+export ANTHROPIC_API_KEY=sk-...
+python scripts/compile.py          # full 3-pass compile, ~60s
+cd backend && uvicorn app.main:app --reload --port 8080
+```
+
+Compilation runs 5 files in parallel, `/api/explore` Q&A uses `claude-sonnet-4-6-20250514` by default. Override the model IDs via `COMPILE_MODEL` / `EXPLORE_MODEL` if you want to pin something else.
+
+### Option B — Ollama (local, free, slow on CPU)
+
+1. **Install Ollama** — https://ollama.com (macOS, Linux, Windows). It auto-starts a daemon at `http://localhost:11434`.
+2. **Pull the default model** (other models work too — see `OLLAMA_MODEL`):
+   ```bash
+   ollama pull llama3.2:3b
+   ```
+3. **Sanity check** — `curl http://localhost:11434/api/tags` should list `llama3.2:3b`.
+4. **Compile** with no `ANTHROPIC_API_KEY` in the environment:
+   ```bash
+   unset ANTHROPIC_API_KEY                 # make sure the Anthropic path is disabled
+   python scripts/compile.py
+   ```
+   The compiler drops to `concurrency=1` for Ollama (one request at a time) and truncates transcripts to 6000 chars to fit the model's context. On a CPU, expect **~5–15 minutes** for the 60-file starter pack with `llama3.2:3b`. A larger model (`qwen3:30b-a3b`, `llama3.1:8b`) gives better concepts but takes longer.
+5. **Run the backend** — same command as Option A. `/api/explore` Q&A will also use Ollama, which is plenty fast for single-question streaming.
+
+Point at a different Ollama host or model via env vars:
+
+```bash
+export OLLAMA_URL=http://192.168.1.10:11434
+export OLLAMA_MODEL=qwen3:30b-a3b
+python scripts/compile.py
+```
+
+### Option C — No LLM at all (fastest bootstrap)
+
+```bash
+python scripts/compile_fast.py
+```
+
+This runs **Pass 1** (structural extraction from `index.json`) and **Pass 3** (Leiden community detection) only, skipping the semantic LLM pass. You get ~130 nodes and ~180 edges in ~2 seconds — enough to populate the canvas and see the guest arc light up with real headshots. `/api/explore` will return an error without a configured LLM backend, but the graph and detail panel work fully.
 
 ## API
 
