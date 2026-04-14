@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -14,6 +14,7 @@ import '@xyflow/react/dist/style.css'
 import ConceptNode from './ConceptNode'
 import GuestNode from './GuestNode'
 import CategoryNode from './CategoryNode'
+import FlowParticles from './FlowParticles'
 import type { GraphResponse } from '../types/graph'
 
 const nodeTypes = { concept: ConceptNode, guest: GuestNode, category: CategoryNode }
@@ -51,6 +52,27 @@ function GraphCanvasInner({
 }: Props) {
   const rf = useReactFlow()
   const storeApi = useStoreApi()
+
+  // `?beam=<node-id>` pre-seeds the hover state on mount. Lets headless
+  // screenshots (and shareable deep links) capture the wisdom-beam effect
+  // without having to dispatch a real mouse event.
+  const forcedBeam = useMemo(() => {
+    if (typeof window === 'undefined') return null
+    return new URLSearchParams(window.location.search).get('beam')
+  }, [])
+  const [hoveredId, setHoveredId] = useState<string | null>(forcedBeam)
+
+  // Clear hover state whenever the view changes — otherwise stale beams can
+  // linger from a previous category. The URL-forced beam survives this reset.
+  useEffect(() => {
+    setHoveredId(forcedBeam)
+  }, [view, expandedDomain, forcedBeam])
+
+  const expandedColor = useMemo(() => {
+    if (!expandedDomain) return '#a855f7'
+    const d = graph.domains.find((d) => d.label === expandedDomain)
+    return d?.color || '#a855f7'
+  }, [graph.domains, expandedDomain])
 
   // ─── Overview: 7 category hubs on a circle ────────────────────────────────
   const overviewNodes = useMemo<Node[]>(() => {
@@ -208,11 +230,27 @@ function GraphCanvasInner({
     [onNodeClick, onCategoryClick],
   )
 
+  const handleNodeMouseEnter = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      if (view !== 'expanded') return
+      // Hovering the category hub lights up every edge in the view (hero moment).
+      // Hovering a concept or guest shows only the edges touching that node.
+      setHoveredId(node.id)
+    },
+    [view],
+  )
+
+  const handleNodeMouseLeave = useCallback(() => {
+    setHoveredId(null)
+  }, [])
+
   return (
     <ReactFlow
       nodes={nodes}
       edges={edges}
       onNodeClick={handleNodeClick}
+      onNodeMouseEnter={handleNodeMouseEnter}
+      onNodeMouseLeave={handleNodeMouseLeave}
       nodeTypes={nodeTypes}
       minZoom={0.2}
       maxZoom={2}
@@ -224,6 +262,7 @@ function GraphCanvasInner({
     >
       <Background color="#1f2937" gap={40} />
       <Controls position="bottom-right" showInteractive={false} />
+      <FlowParticles hoveredId={hoveredId} edges={edges} color={expandedColor} />
     </ReactFlow>
   )
 }
