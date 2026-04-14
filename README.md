@@ -13,9 +13,10 @@ A zoomable, pannable canvas mapping every guest, concept, and framework from Len
 - **Click a guest → side panel** with episode cards, each showing the real episode cover art.
 - **Click an episode card → in-panel summary** with the lead hook pulled verbatim, a "Main ideas" bullet list extracted from the episode description, clickable concept tags, and a "Listen on Lenny's Newsletter" CTA.
 - **Click a concept → detail panel** showing which guests teach it and related concepts.
+- **Wisdom beams** — hover any concept, guest, or the category hub inside an expanded view and glowing particles stream along the edges, showing the teach relationships in motion.
 - **Ask Claude** — grounded Q&A over the compiled wiki, streamed via SSE.
 
-![Expanded Growth category: central Growth hub, six concept pills on an inner ring, eight guest headshots on an outer ring, subtle concept→guest edges](frontend/public/screenshots/expanded.png)
+![Expanded Growth category with wisdom beams: central Growth hub, concept pills on an inner ring, guest headshots on an outer ring, glowing green particles streaming along the concept→guest teach edges](frontend/public/screenshots/expanded.png)
 
 ## Architecture
 
@@ -104,6 +105,7 @@ Open **http://localhost:5173**.
 
 - **Overview** — drag to pan, wheel to zoom, click any category hub to drill in
 - **Expanded** — selected hub at center, concept pills in an inner ring, guest headshots in an outer ring. Back button in the header returns to overview.
+- **Wisdom beams** — hover any node in the expanded view to fire glowing particle streams along its edges. Hover the central hub to light every edge at once. Append `?beam=<node-id>` to the URL (e.g. `?expand=Growth&beam=domain:Growth`) to pre-seed the effect for screenshots.
 - **Detail panel** — clicking a guest or concept opens it on the right with related items and an "Ask Claude" Q&A box
 - **Episode summary** — clicking an episode card inside a guest's panel opens an in-panel summary with the hook sentence, main-idea bullets, linked concepts, and a "Listen on Lenny's Newsletter" CTA
 - **Search** — top-left bar matches guests, concepts, and categories; picking a result drills into its domain
