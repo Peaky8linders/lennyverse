@@ -4,11 +4,9 @@
 
 A zoomable, pannable canvas mapping every concept, framework, and debate from Lenny's Newsletter and Podcast. Built on Karpathy's LLM wiki pattern and graphify's extraction pipeline.
 
-![LennyVerse graph: concept pills with category icons arranged around an arc of 50 guest headshots, edges connecting guests to the concepts they teach](frontend/public/screenshots/hero.png)
+![Animated demo: the LennyVerse canvas zooms from the full graph down into the AI-era guest cluster and back out](frontend/public/screenshots/demo.gif)
 
-**Zoomed to the AI-era guest cluster** — Keith Rabois, Claire Vo, Simon Willison, Amol Avasare, Boris Cherny, Jessica Fain, Jeetu Patel, Jenny Wen and Sherwin Wu, all teaching into the Career Development / Analysis / Measurement concept pills on either side:
-
-![Zoomed view of the guest arc showing AI-era podcast guest headshots connected to concept pills](frontend/public/screenshots/ai-guests.png)
+See [Demo](#demo) for the static hero + zoom screenshots.
 
 ![Stack: Vite + React 18 + TypeScript + Tailwind + React Flow + Framer Motion | FastAPI + Python 3.12 + Claude API](https://img.shields.io/badge/stack-vite%20%7C%20react%20%7C%20fastapi%20%7C%20claude-blue)
 
@@ -20,6 +18,20 @@ A zoomable, pannable canvas mapping every concept, framework, and debate from Le
 - **Click any guest** → side panel opens with their episode cards, each showing the real episode cover art and linking to Lenny's Substack post
 - **Click any concept** → see which guests teach it, related concepts, and contradictions
 - **Ask Claude** → grounded Q&A over the compiled wiki, streamed via SSE
+
+## Demo
+
+The loop at the top of this README is an auto-zoom from the full graph down into the AI-era guest cluster and back out. For crisper detail:
+
+**Full canvas** — concept pills with per-domain icons around an arc of 50 guest headshots:
+
+![LennyVerse graph: concept pills with category icons arranged around an arc of 50 guest headshots, edges connecting guests to the concepts they teach](frontend/public/screenshots/hero.png)
+
+**Zoomed to the AI-era guest cluster** — Keith Rabois, Claire Vo, Simon Willison, Amol Avasare, Boris Cherny, Jessica Fain, Jeetu Patel, Jenny Wen and Sherwin Wu, all teaching into the Career Development / Analysis / Measurement concept pills on either side:
+
+![Zoomed view of the guest arc showing AI-era podcast guest headshots connected to concept pills](frontend/public/screenshots/ai-guests.png)
+
+Both static shots are captured at 3200×2000 (2× DPI) via the `?focus=...` deep-link trick documented in [Usage](#usage). The GIF is generated from them with `PIL.Image.save(..., save_all=True)` — see the commit history for the one-off script.
 
 ## Architecture
 
@@ -193,6 +205,66 @@ python scripts/compile_fast.py
 ```
 
 This runs **Pass 1** (structural extraction from `index.json`) and **Pass 3** (Leiden community detection) only, skipping the semantic LLM pass. You get ~130 nodes and ~180 edges in ~2 seconds — enough to populate the canvas and see the guest arc light up with real headshots. `/api/explore` will return an error without a configured LLM backend, but the graph and detail panel work fully.
+
+## Troubleshooting
+
+### "Make sure the backend is running and the wiki has been compiled"
+
+The frontend shows this when `GET /api/graph` fails or returns zero nodes. Three common causes:
+
+1. **Backend isn't running.** `curl http://127.0.0.1:8080/health` — you should get JSON with `"status": "ok"`. If not, start `uvicorn app.main:app --reload --port 8080` from `backend/`.
+2. **Wiki is empty.** If `/health` returns `"concept_count": 0`, you haven't compiled yet. Run `python scripts/compile_fast.py` (or one of the other compile paths — see [LLM backends](#llm-backends)).
+3. **Port mismatch.** Vite proxies `/api/*` to `127.0.0.1:8080` — if you changed the backend port, also update `frontend/vite.config.ts` or set `VITE_API_URL` in `frontend/.env`.
+
+### Graph loads but every guest shows initials instead of a headshot
+
+You haven't run the one-time image fetch:
+
+```bash
+python scripts/fetch_guest_images.py
+```
+
+This writes `frontend/public/guest_images.json` + `episode_images.json`. Vite serves them as static assets, so restart the dev server after the first run to clear its in-memory cache. Confirm with `curl http://localhost:5173/guest_images.json | head` — you should see real `substackcdn.com` URLs.
+
+If the JSON is present but images still don't render, open DevTools → Network → filter on `substackcdn` and look for blocked requests. Some corporate proxies strip the `Referer` header, which Substack's CDN occasionally rejects; in that case point `frontend/public/guest_images.json` at a local mirror by downloading the images into `frontend/public/avatars/` and rewriting the URLs.
+
+### Backend returns `500 Internal Server Error` on `/api/graph`
+
+Check the uvicorn log — the global exception handler logs the real cause with `exc_info=True`. The three failures we've hit:
+
+1. **Wiki directory missing.** The compile never produced `knowledge/wiki/`. Fix: run a compile script.
+2. **Malformed YAML frontmatter.** A hand-edited wiki page has broken `---` delimiters. Fix: delete the offending file and recompile, or run `py -3.12 -c "from app.services.frontmatter import read_wiki_page; print(read_wiki_page('path/to/file.md'))"` to pin down the parser error.
+3. **`ANTHROPIC_API_KEY` set to an invalid string** (like the word "none"). The `/api/explore` endpoint then tries Anthropic and 401s. Fix: `unset ANTHROPIC_API_KEY` to fall through to Ollama, or set a real key.
+
+### Ollama compile hangs or times out
+
+A few things to rule out:
+
+- **Is the daemon actually up?** `curl http://localhost:11434/api/tags` should list models. If it hangs, start Ollama (macOS/Windows: launch the app; Linux: `systemctl --user start ollama` or `ollama serve`).
+- **Is the model pulled?** `ollama list` — if `llama3.2:3b` isn't there, run `ollama pull llama3.2:3b`.
+- **CPU-only is slow.** With no GPU, each file takes 30–90 seconds and the compiler runs `concurrency=1`, so 60 files can easily take **10+ minutes**. Watch `curl http://localhost:11434/api/ps` — as long as a model is listed and `size_vram > 0` (GPU) or the process CPU is pegged, it's working. If you want proof of progress mid-run, `tail -f` the uvicorn log; the compiler emits one `INFO` line per file.
+- **Prefer a smaller context.** `OLLAMA_MODEL=llama3.2:1b` trades quality for ~3× throughput.
+- **Just want the graph and not the semantic concepts?** Switch to `scripts/compile_fast.py` — it skips Ollama entirely.
+
+### `Port 5173 is in use, trying another one…`
+
+Vite automatically falls through to 5174, 5175, etc. The README uses `5173` everywhere for clarity, but open the actual URL Vite prints at startup. The `/api` proxy still works on the fallback port.
+
+### CORS errors in the browser console
+
+Dev mode allows `*` — if you see a CORS error, you're probably running the backend in production mode (`ENV=production`) without adding the frontend URL to `CORS_ORIGINS`. Either unset `ENV` or run:
+
+```bash
+export CORS_ORIGINS=http://localhost:5173,http://localhost:5174
+```
+
+### The `?focus=slug1,slug2` deep link doesn't zoom
+
+Three things to check:
+
+1. The slugs match the IDs React Flow renders. Open DevTools console and run `Array.from(document.querySelectorAll('.react-flow__node')).map(n=>n.getAttribute('data-id'))` — every slug you pass must appear in that list.
+2. The slugs are **not** URL-encoded. Pass `?focus=keith-rabois,claire-vo`, not `?focus=keith-rabois%2Cclaire-vo`.
+3. You're on the canvas root URL (`/`) and not on an initial-hash route. The logic runs once inside `GraphCanvas.tsx`'s mount effect 750ms after the graph loads.
 
 ## API
 
