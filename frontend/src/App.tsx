@@ -1,14 +1,35 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useGraph } from './hooks/useGraph'
 import GraphCanvas, { type ViewMode } from './components/GraphCanvas'
 import DetailPanel from './components/DetailPanel'
 import SearchBar from './components/SearchBar'
 
+// `?expand=<DomainLabel>` drills into a specific domain on load — used for
+// repeatable screenshots and shareable deep links.
+function initialExpand(): { view: ViewMode; domain: string | null } {
+  if (typeof window === 'undefined') return { view: 'overview', domain: null }
+  const p = new URLSearchParams(window.location.search).get('expand')
+  if (p) return { view: 'expanded', domain: p }
+  return { view: 'overview', domain: null }
+}
+
 export default function App() {
   const { graph, loading, error, fetchNodeDetail } = useGraph()
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-  const [view, setView] = useState<ViewMode>('overview')
-  const [expandedDomain, setExpandedDomain] = useState<string | null>(null)
+  const init = initialExpand()
+  const [view, setView] = useState<ViewMode>(init.view)
+  const [expandedDomain, setExpandedDomain] = useState<string | null>(init.domain)
+
+  // If the graph finishes loading and the URL asked us to expand a domain that
+  // actually exists, honor it — otherwise stay in overview.
+  useEffect(() => {
+    if (!graph || view !== 'expanded' || !expandedDomain) return
+    const match = graph.domains.some((d) => d.label === expandedDomain)
+    if (!match) {
+      setView('overview')
+      setExpandedDomain(null)
+    }
+  }, [graph, view, expandedDomain])
 
   const handleNodeClick = useCallback((nodeId: string) => {
     setSelectedNodeId(nodeId)
