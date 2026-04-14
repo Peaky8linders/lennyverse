@@ -4,10 +4,6 @@
 
 A zoomable, pannable canvas mapping every concept, framework, and debate from Lenny's Newsletter and Podcast. Built on Karpathy's LLM wiki pattern and graphify's extraction pipeline.
 
-![Animated demo: the LennyVerse canvas zooms from the full graph down into the AI-era guest cluster and back out](frontend/public/screenshots/demo.gif)
-
-See [Demo](#demo) for the static hero + zoom screenshots.
-
 ![Stack: Vite + React 18 + TypeScript + Tailwind + React Flow + Framer Motion | FastAPI + Python 3.12 + Claude API](https://img.shields.io/badge/stack-vite%20%7C%20react%20%7C%20fastapi%20%7C%20claude-blue)
 
 ## What it does
@@ -18,20 +14,6 @@ See [Demo](#demo) for the static hero + zoom screenshots.
 - **Click any guest** → side panel opens with their episode cards, each showing the real episode cover art and linking to Lenny's Substack post
 - **Click any concept** → see which guests teach it, related concepts, and contradictions
 - **Ask Claude** → grounded Q&A over the compiled wiki, streamed via SSE
-
-## Demo
-
-The loop at the top of this README is an auto-zoom from the full graph down into the AI-era guest cluster and back out. For crisper detail:
-
-**Full canvas** — concept pills with per-domain icons around an arc of 50 guest headshots:
-
-![LennyVerse graph: concept pills with category icons arranged around an arc of 50 guest headshots, edges connecting guests to the concepts they teach](frontend/public/screenshots/hero.png)
-
-**Zoomed to the AI-era guest cluster** — Keith Rabois, Claire Vo, Simon Willison, Amol Avasare, Boris Cherny, Jessica Fain, Jeetu Patel, Jenny Wen and Sherwin Wu, all teaching into the Career Development / Analysis / Measurement concept pills on either side:
-
-![Zoomed view of the guest arc showing AI-era podcast guest headshots connected to concept pills](frontend/public/screenshots/ai-guests.png)
-
-Both static shots are captured at 3200×2000 (2× DPI) via the `?focus=...` deep-link trick documented in [Usage](#usage). The GIF is generated from them with `PIL.Image.save(..., save_all=True)` — see the commit history for the one-off script.
 
 ## Architecture
 
@@ -150,7 +132,7 @@ Once both servers are up:
 - **Click a guest node** → the detail panel slides in from the right with their `known_for` list and a gallery of episode cards. Each card has the real episode cover as a thumbnail and opens the episode on `lennysnewsletter.com` in a new tab.
 - **Click a concept node** → the detail panel shows which guests teach it, the domain it belongs to, related concepts, and any `contrasts_with` tensions
 - **Ask Claude** — bottom-right of the detail panel. Type a question grounded in the currently-selected node; answers stream via SSE from `/api/explore` and cite the wiki pages they're drawn from. Requires an LLM backend (Anthropic or Ollama).
-- **Deep-link a zoomed sub-graph** — append `?focus=<slug1>,<slug2>,...` to the URL and the canvas fits only those nodes on load. Useful for sharing views or reproducing screenshots:
+- **Deep-link a zoomed sub-graph** — append `?focus=<slug1>,<slug2>,...` to the URL and the canvas fits only those nodes on load. Useful for sharing views:
   ```
   http://localhost:5173/?focus=keith-rabois,claire-vo,simon-willison,boris-cherny
   ```
