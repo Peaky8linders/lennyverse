@@ -24,7 +24,7 @@ function GuestNode({ data, selected }: NodeProps) {
         ${selected ? 'scale-110' : 'hover:scale-105'}
       `}
     >
-      <Handle type="target" position={Position.Top} className="!bg-transparent !border-0 !w-0 !h-0" />
+      <Handle type="target" position={Position.Top} style={{ opacity: 0, width: 8, height: 8 }} />
       <div
         className="w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold text-white shadow-lg border-2"
         style={{
@@ -37,7 +37,7 @@ function GuestNode({ data, selected }: NodeProps) {
       <div className="text-xs text-gray-300 font-medium text-center max-w-[100px] truncate">
         {d.label}
       </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-transparent !border-0 !w-0 !h-0" />
+      <Handle type="source" position={Position.Bottom} style={{ opacity: 0, width: 8, height: 8 }} />
     </div>
   )
 }

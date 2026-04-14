@@ -1,11 +1,12 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import {
   ReactFlow,
+  ReactFlowProvider,
   Background,
   Controls,
   MiniMap,
-  useNodesState,
-  useEdgesState,
+  useReactFlow,
+  useStoreApi,
   type Node,
   type Edge,
 } from '@xyflow/react'
@@ -13,11 +14,9 @@ import '@xyflow/react/dist/style.css'
 
 import ConceptNode from './ConceptNode'
 import GuestNode from './GuestNode'
-import TensionEdge from './TensionEdge'
 import type { GraphResponse } from '../types/graph'
 
 const nodeTypes = { concept: ConceptNode, guest: GuestNode }
-const edgeTypes = { tension: TensionEdge }
 
 interface Props {
   graph: GraphResponse
@@ -26,12 +25,12 @@ interface Props {
   selectedNodeId: string | null
 }
 
-export default function GraphCanvas({ graph, hiddenDomains, onNodeClick, selectedNodeId }: Props) {
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
+function GraphCanvasInner({ graph, hiddenDomains, onNodeClick, selectedNodeId }: Props) {
+  const rf = useReactFlow()
+  const storeApi = useStoreApi()
 
-  useEffect(() => {
-    const newNodes: Node[] = graph.nodes
+  const nodes = useMemo<Node[]>(() => {
+    return graph.nodes
       .filter((n) => !hiddenDomains.has(n.domain))
       .map((n) => ({
         id: n.id,
@@ -47,25 +46,56 @@ export default function GraphCanvas({ graph, hiddenDomains, onNodeClick, selecte
         },
         selected: n.id === selectedNodeId,
       }))
+  }, [graph, hiddenDomains, selectedNodeId])
 
-    const visibleIds = new Set(newNodes.map((n) => n.id))
-    const newEdges: Edge[] = graph.edges
-      .filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target))
-      .map((e) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        type: e.type === 'contrasts_with' ? 'tension' : 'default',
-        data: { type: e.type, label: e.label, provenance: e.provenance },
-        animated: e.type === 'contrasts_with',
-        style: e.type === 'contrasts_with'
-          ? { stroke: '#f97316', strokeDasharray: '6 4' }
-          : { stroke: '#4b5563' },
-      }))
+  const edges = useMemo<Edge[]>(() => {
+    const visibleIds = new Set(nodes.map((n) => n.id))
+    const seen = new Set<string>()
+    const out: Edge[] = []
+    graph.edges
+      .filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target) && e.source !== e.target)
+      .forEach((e, idx) => {
+        const id = `e${idx}-${e.source}->${e.target}`
+        if (seen.has(id)) return
+        seen.add(id)
+        out.push({
+          id,
+          source: e.source,
+          target: e.target,
+          style: e.type === 'contrasts_with'
+            ? { stroke: '#f97316', strokeDasharray: '6 4', strokeWidth: 2 }
+            : { stroke: '#9ca3af', strokeWidth: 1.5 },
+        })
+      })
+    return out
+  }, [graph, nodes])
 
-    setNodes(newNodes)
-    setEdges(newEdges)
-  }, [graph, hiddenDomains, selectedNodeId, setNodes, setEdges])
+  // Force React Flow to measure all nodes + register handles.
+  // Workaround for a case where the ResizeObserver doesn't fire on initial mount
+  // (happens when the container was 0x0 when ReactFlow mounted).
+  useEffect(() => {
+    if (nodes.length === 0) return
+    const timers: number[] = []
+    const runUpdate = () => {
+      const state = storeApi.getState()
+      const updates = new Map<string, { id: string; nodeElement: HTMLElement; force: true }>()
+      nodes.forEach((n) => {
+        const el = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${n.id}"]`)
+        if (el) updates.set(n.id, { id: n.id, nodeElement: el, force: true })
+      })
+      if (updates.size > 0) {
+        state.updateNodeInternals(updates)
+      }
+    }
+    // Retry a few times to handle race conditions with DOM paint
+    ;[50, 200, 500].forEach((d) => {
+      timers.push(window.setTimeout(runUpdate, d))
+    })
+    timers.push(window.setTimeout(() => {
+      rf.fitView({ padding: 0.2, duration: 400 })
+    }, 750))
+    return () => timers.forEach((t) => window.clearTimeout(t))
+  }, [nodes, storeApi, rf])
 
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
@@ -78,15 +108,15 @@ export default function GraphCanvas({ graph, hiddenDomains, onNodeClick, selecte
     <ReactFlow
       nodes={nodes}
       edges={edges}
-      onNodesChange={onNodesChange}
-      onEdgesChange={onEdgesChange}
       onNodeClick={handleNodeClick}
       nodeTypes={nodeTypes}
-      edgeTypes={edgeTypes}
-      fitView
       minZoom={0.1}
       maxZoom={2}
       proOptions={{ hideAttribution: true }}
+      nodesDraggable={false}
+      nodesConnectable={false}
+      fitView
+      fitViewOptions={{ padding: 0.2 }}
     >
       <Background color="#1f2937" gap={40} />
       <Controls position="bottom-right" />
@@ -100,5 +130,13 @@ export default function GraphCanvas({ graph, hiddenDomains, onNodeClick, selecte
         style={{ marginBottom: 60 }}
       />
     </ReactFlow>
+  )
+}
+
+export default function GraphCanvas(props: Props) {
+  return (
+    <ReactFlowProvider>
+      <GraphCanvasInner {...props} />
+    </ReactFlowProvider>
   )
 }
