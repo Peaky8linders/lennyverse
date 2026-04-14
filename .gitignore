@@ -1,0 +1,12 @@
+# Lenny's dataset license forbids redistributing raw files.
+# Generated wiki content is derivative of that data — also excluded.
+# Users must download the starter pack from https://github.com/LennysNewsletter/lennys-newsletterpodcastdata
+# and run scripts/seed_raw.py then scripts/compile.py to populate these.
+knowledge/raw/
+knowledge/wiki/concepts/
+knowledge/wiki/guests/
+knowledge/wiki/domains/
+knowledge/wiki/tensions/
+knowledge/wiki/index.md
+knowledge/wiki/log.md
+knowledge/GRAPH_REPORT.md

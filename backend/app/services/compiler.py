@@ -63,19 +63,24 @@ class Compiler:
     def _extract_from_index(self, index_data):
         """Extract nodes from index.json metadata."""
         items = []
+        source_type_by_idx: list[str] = []
+
         if isinstance(index_data, list):
             items = index_data
+            source_type_by_idx = ["source"] * len(items)
         elif isinstance(index_data, dict):
-            for key in ["items", "posts", "episodes", "transcripts", "newsletters", "podcasts"]:
+            for key in ["podcasts", "newsletters", "items", "posts", "episodes", "transcripts"]:
                 if key in index_data and isinstance(index_data[key], list):
-                    items.extend(index_data[key])
-            if not items:
-                for key, val in index_data.items():
-                    if isinstance(val, list):
-                        items = val
-                        break
+                    for it in index_data[key]:
+                        items.append(it)
+                        if key == "podcasts":
+                            source_type_by_idx.append("podcast")
+                        elif key == "newsletters":
+                            source_type_by_idx.append("newsletter")
+                        else:
+                            source_type_by_idx.append("source")
 
-        for item in items:
+        for i, item in enumerate(items):
             if not isinstance(item, dict):
                 continue
             title = item.get("title", "")
@@ -83,7 +88,7 @@ class Compiler:
                 continue
 
             node_id = self._to_id(title)
-            source_type = "podcast" if any(k in item for k in ["guest", "guests", "transcript"]) else "newsletter"
+            source_type = source_type_by_idx[i] if i < len(source_type_by_idx) else "source"
 
             if not any(n["id"] == node_id for n in self.nodes):
                 self.nodes.append({
@@ -101,6 +106,79 @@ class Compiler:
                     self._add_guest(g, node_id)
             elif guest:
                 self._add_guest(str(guest), node_id)
+
+            # Extract concepts from description: "... covering X, Y, and Z."
+            description = item.get("description", "") or item.get("subtitle", "")
+            if description:
+                self._extract_concepts_from_description(description, node_id, guest)
+
+    def _extract_concepts_from_description(self, description: str, source_id: str, guest) -> None:
+        """Extract concept nodes from `description` field by parsing 'covering A, B, and C'."""
+        import re
+        # Pattern: "covering X, Y, and Z" or "covering X and Y"
+        match = re.search(r"covering\s+(.+?)(?:\.|$)", description, re.IGNORECASE)
+        if not match:
+            return
+        topics_str = match.group(1)
+        # Split on ", and", "and", ","
+        topics_str = re.sub(r",\s*and\s+", ", ", topics_str)
+        topics_str = re.sub(r"\s+and\s+", ", ", topics_str)
+        topics = [t.strip().rstrip(".") for t in topics_str.split(",") if t.strip()]
+
+        # Domain inference from topic keywords
+        domain_keywords = {
+            "Growth": ["growth", "acquisition", "retention", "funnel", "viral", "loops", "plg", "marketing"],
+            "Product Strategy": ["product", "strategy", "roadmap", "prioritization", "vision", "discovery", "north star"],
+            "Leadership": ["leadership", "team", "management", "culture", "hiring", "career"],
+            "Career": ["career", "skill", "development", "interview", "resume", "promotion"],
+            "Engineering": ["engineering", "code", "technical", "ai", "ml", "dev", "architecture"],
+            "Design": ["design", "ux", "ui", "user", "research", "prototype"],
+        }
+
+        for topic in topics[:5]:
+            if len(topic) < 3 or len(topic) > 60:
+                continue
+            concept_id = self._to_id(topic)
+            # Infer domain
+            lt = topic.lower()
+            domain = "Uncategorized"
+            best_score = 0
+            for dname, kws in domain_keywords.items():
+                score = sum(1 for kw in kws if kw in lt)
+                if score > best_score:
+                    best_score = score
+                    domain = dname
+
+            # Add or enrich concept node
+            existing = next((n for n in self.nodes if n["id"] == concept_id and n["type"] == "concept"), None)
+            if existing:
+                if source_id not in existing.get("appears_in", []):
+                    existing.setdefault("appears_in", []).append(source_id)
+                if isinstance(guest, str) and guest:
+                    gid = self._to_id(guest)
+                    if gid not in existing.get("taught_by", []):
+                        existing.setdefault("taught_by", []).append(gid)
+            else:
+                self.nodes.append({
+                    "id": concept_id,
+                    "type": "concept",
+                    "title": topic.title() if topic.islower() else topic,
+                    "domain": domain,
+                    "summary": f"Topic from Lenny's Podcast: {topic}",
+                    "confidence": 0.7,
+                    "appears_in": [source_id],
+                    "taught_by": [self._to_id(guest)] if isinstance(guest, str) and guest else [],
+                })
+
+            # Edges
+            self.edges.append({
+                "source": concept_id, "target": source_id, "type": "mentioned_in", "provenance": "EXTRACTED",
+            })
+            if isinstance(guest, str) and guest:
+                gid = self._to_id(guest)
+                self.edges.append({
+                    "source": gid, "target": concept_id, "type": "teaches", "provenance": "EXTRACTED",
+                })
 
     def _add_guest(self, name: str, source_id: str):
         name = name.strip()
@@ -138,17 +216,20 @@ class Compiler:
             })
 
     async def pass2_semantic(self):
-        """Use Claude to extract concepts, relationships, contradictions."""
+        """Use LLM (Claude or Ollama) to extract concepts, relationships, contradictions."""
         try:
-            from app.services.llm_client import llm_generate  # noqa: F401
+            from app.services.llm_client import llm_generate, use_ollama  # noqa: F401
         except Exception:
             logger.warning("LLM client not available — skipping semantic extraction")
             return
 
         from app.config import config
-        if not config.anthropic_api_key:
-            logger.warning("No ANTHROPIC_API_KEY — skipping semantic extraction")
+        if not config.anthropic_api_key and not use_ollama():
+            logger.warning("No LLM backend available — skipping semantic extraction")
             return
+
+        if use_ollama():
+            logger.info("Using Ollama model: %s", config.ollama_model)
 
         all_files = []
         for subdir in ["podcasts", "newsletters"]:
@@ -161,22 +242,29 @@ class Compiler:
             return
 
         import asyncio
-        # Process with bounded concurrency
-        semaphore = asyncio.Semaphore(5)
+        # Ollama can only handle one request at a time; Claude handles parallel fine
+        concurrency = 1 if use_ollama() else 5
+        max_content = 6000 if use_ollama() else 15000
+        semaphore = asyncio.Semaphore(concurrency)
 
-        async def process_one(f: Path):
+        async def process_one(f: Path, idx: int, total: int):
             async with semaphore:
                 try:
                     content = f.read_text(encoding="utf-8", errors="replace")
-                    if len(content) > 15000:
-                        content = content[:15000] + "\n\n[... truncated]"
+                    if len(content) > max_content:
+                        content = content[:max_content] + "\n\n[... truncated]"
+                    logger.info("[%d/%d] Extracting semantics from %s", idx + 1, total, f.name)
                     result = await self._extract_semantics(f.stem, content)
+                    if result:
+                        concept_count = len(result.get("concepts", []) or [])
+                        logger.info("[%d/%d] %s → %d concepts", idx + 1, total, f.name, concept_count)
                     return f.stem, result
                 except Exception as e:
                     logger.error("Semantic extraction failed for %s: %s", f.name, e)
                     return f.stem, None
 
-        results = await asyncio.gather(*[process_one(f) for f in all_files])
+        total = len(all_files)
+        results = await asyncio.gather(*[process_one(f, i, total) for i, f in enumerate(all_files)])
         for source_id, result in results:
             if result:
                 self._merge_semantic_result(result, self._to_id(source_id))

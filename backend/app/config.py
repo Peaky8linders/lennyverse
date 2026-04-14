@@ -40,6 +40,10 @@ class Config:
     max_tokens_explore: int = 1024
     llm_timeout: float = field(default_factory=lambda: float(os.getenv("LLM_TIMEOUT", "120")))
 
+    # Ollama fallback (when no ANTHROPIC_API_KEY)
+    ollama_url: str = field(default_factory=lambda: os.getenv("OLLAMA_URL", "http://localhost:11434"))
+    ollama_model: str = field(default_factory=lambda: os.getenv("OLLAMA_MODEL", "llama3.2:3b"))
+
     # Rate limiting
     rate_limit: str = field(default_factory=lambda: os.getenv("RATE_LIMIT", "10/minute"))
 
