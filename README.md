@@ -128,35 +128,16 @@ cd backend && uvicorn app.main:app --reload --port 8080
 
 Compile and Q&A default to `claude-sonnet-4-6-20250514`. Override with `COMPILE_MODEL` / `EXPLORE_MODEL`.
 
-### Ollama on Apple Silicon
-
-On an M-series MacBook, Ollama auto-uses Metal and gets within spitting distance of API quality — no egress cost, no rate limits, transcripts never leave the machine. Pick a model based on unified memory:
-
-| Your MacBook | Recommended model | Size | Why |
-|---|---|---|---|
-| 8–16 GB | `llama3.1:8b` | ~4.7 GB | Fast, decent concept extraction |
-| 16–24 GB | `qwen2.5:14b` | ~9 GB | Much stronger reasoning than the 8B tier |
-| 32 GB | `qwen2.5:32b` **(recommended)** | ~20 GB | Best quality-per-watt; comparable to `claude-haiku` on this task |
-| 64 GB (M2/M3 Max, M2 Ultra) | `llama3.1:70b` or `qwen2.5:72b` | ~40 GB | Approaches `claude-sonnet` quality |
-| 128 GB+ (M3/M4 Max, M2/M3 Ultra) | `llama3.3:70b-instruct-q8_0` | ~75 GB | Higher-precision quant, richer concepts |
+### Ollama
 
 ```bash
-unset ANTHROPIC_API_KEY           # make sure the Anthropic path is disabled
-ollama pull qwen2.5:32b
+unset ANTHROPIC_API_KEY
+ollama pull qwen2.5:32b           # or llama3.1:8b on 16 GB Macs
 export OLLAMA_MODEL=qwen2.5:32b
 python scripts/compile.py
 ```
 
-Rough wall times for the 60-file starter pack on Apple Silicon with Metal:
-
-| Model | M1 Pro (16 GB) | M2 Max (32 GB) | M3 Max (64 GB) |
-|---|---|---|---|
-| `llama3.1:8b` | ~3 min | ~2 min | ~1.5 min |
-| `qwen2.5:14b` | ~6 min | ~3 min | ~2 min |
-| `qwen2.5:32b` | OOM risk | ~7 min | ~4 min |
-| `llama3.1:70b` | — | swap thrashes | ~14 min |
-
-Check `ollama ps` — `size_vram > 0` means Metal offload is active. Point at a remote daemon with `OLLAMA_URL=http://host:11434`.
+Runs locally with Metal on Apple Silicon. Set `OLLAMA_URL=http://host:11434` to point at a remote daemon.
 
 ## API
 
