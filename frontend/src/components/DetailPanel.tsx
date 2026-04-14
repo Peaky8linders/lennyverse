@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { NodeDetail } from '../types/graph'
 import AskClaude from './AskClaude'
+import EpisodeSummary from './EpisodeSummary'
 import { useGuestImages } from '../hooks/useGuestImages'
 
 interface Props {
@@ -14,13 +15,17 @@ interface Props {
 export default function DetailPanel({ nodeId, fetchDetail, onClose, onNavigate }: Props) {
   const [detail, setDetail] = useState<NodeDetail | null>(null)
   const [loading, setLoading] = useState(false)
+  const [episodeId, setEpisodeId] = useState<string | null>(null)
   const { getEpisodeImage } = useGuestImages()
 
   useEffect(() => {
     if (!nodeId) {
       setDetail(null)
+      setEpisodeId(null)
       return
     }
+    // Reset any episode summary view when navigating to a different node
+    setEpisodeId(null)
     setLoading(true)
     fetchDetail(nodeId).then((d) => {
       setDetail(d)
@@ -38,6 +43,27 @@ export default function DetailPanel({ nodeId, fetchDetail, onClose, onNavigate }
           transition={{ type: 'spring', damping: 25, stiffness: 200 }}
           className="fixed right-0 top-0 h-full w-96 bg-gray-900 border-l border-gray-700 shadow-2xl overflow-y-auto z-50"
         >
+          {episodeId ? (
+            <div className="relative">
+              <button
+                onClick={onClose}
+                className="absolute top-4 right-4 z-10 text-gray-500 hover:text-white transition-colors text-xl leading-none"
+                aria-label="Close"
+              >
+                ×
+              </button>
+              <EpisodeSummary
+                episodeId={episodeId}
+                parentLabel={detail?.label || undefined}
+                fetchDetail={fetchDetail}
+                onBack={() => setEpisodeId(null)}
+                onNavigate={(id) => {
+                  setEpisodeId(null)
+                  onNavigate(id)
+                }}
+              />
+            </div>
+          ) : (
           <div className="p-6">
             <div className="flex items-start justify-between mb-4">
               <div>
@@ -108,12 +134,11 @@ export default function DetailPanel({ nodeId, fetchDetail, onClose, onNavigate }
                           const epImg = getEpisodeImage(cn.id)
                           const isNewsletter = (cn.source_type || 'podcast').toLowerCase() === 'newsletter'
                           return (
-                          <a
+                          <button
                             key={cn.id}
-                            href={cn.url || `https://www.lennysnewsletter.com/p/${cn.id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="group flex items-stretch gap-3 p-3 rounded-lg bg-gradient-to-br from-purple-950/40 to-gray-900 border border-purple-900/40 hover:border-purple-500/60 hover:from-purple-900/40 transition-all"
+                            type="button"
+                            onClick={() => setEpisodeId(cn.id)}
+                            className="group flex items-stretch gap-3 p-3 rounded-lg bg-gradient-to-br from-purple-950/40 to-gray-900 border border-purple-900/40 hover:border-purple-500/60 hover:from-purple-900/40 transition-all w-full text-left"
                           >
                             {/* Episode thumbnail tile — real cover art when available, icon fallback otherwise */}
                             {epImg ? (
@@ -166,11 +191,11 @@ export default function DetailPanel({ nodeId, fetchDetail, onClose, onNavigate }
                             </div>
 
                             <div className="flex-shrink-0 self-center w-7 h-7 rounded-full bg-purple-500/20 flex items-center justify-center group-hover:bg-purple-500/40 transition-colors">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="text-purple-300 ml-0.5">
-                                <path d="M8 5v14l11-7z" />
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-purple-300">
+                                <path d="M9 18l6-6-6-6" />
                               </svg>
                             </div>
-                          </a>
+                          </button>
                           )
                         })}
                     </div>
@@ -220,6 +245,7 @@ export default function DetailPanel({ nodeId, fetchDetail, onClose, onNavigate }
               <p className="text-sm text-gray-500">Node not found.</p>
             )}
           </div>
+          )}
         </motion.div>
       )}
     </AnimatePresence>
