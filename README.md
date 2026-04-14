@@ -16,6 +16,10 @@ A zoomable, pannable canvas mapping every guest, concept, and framework from Len
 - **Wisdom beams** — hover any concept, guest, or the category hub inside an expanded view and glowing particles stream along the edges, showing the teach relationships in motion.
 - **Ask Claude** — grounded Q&A over the compiled wiki, streamed via SSE.
 
+![Wisdom beams in motion — expanded Growth category with glowing green particles streaming along every concept→guest teach edge](frontend/public/screenshots/beams.gif)
+
+_Still frame of the same view for crisper detail:_
+
 ![Expanded Growth category with wisdom beams: central Growth hub, concept pills on an inner ring, guest headshots on an outer ring, glowing green particles streaming along the concept→guest teach edges](frontend/public/screenshots/expanded.png)
 
 ## Architecture
