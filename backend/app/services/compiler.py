@@ -148,14 +148,58 @@ class Compiler:
         topics_str = re.sub(r"\s+and\s+", ", ", topics_str)
         topics = [t.strip().rstrip(".") for t in topics_str.split(",") if t.strip()]
 
-        # Domain inference from topic keywords
+        # Domain inference from topic keywords. Keyword lists are tuned so that
+        # every topic we've seen in Lenny's starter pack routes to a real domain
+        # — we never want to dump concepts into an "Uncategorized" bucket.
         domain_keywords = {
-            "Growth": ["growth", "acquisition", "retention", "funnel", "viral", "loops", "plg", "marketing"],
-            "Product Strategy": ["product", "strategy", "roadmap", "prioritization", "vision", "discovery", "north star"],
-            "Leadership": ["leadership", "team", "management", "culture", "hiring", "career"],
-            "Career": ["career", "skill", "development", "interview", "resume", "promotion"],
-            "Engineering": ["engineering", "code", "technical", "ai", "ml", "dev", "architecture"],
-            "Design": ["design", "ux", "ui", "user", "research", "prototype"],
+            "Growth": [
+                "growth", "acquisition", "retention", "funnel", "viral", "loops", "plg",
+                "marketing", "gtm", "go-to-market", "go to market", "pricing", "monetization",
+                "metric", "measurement", "analytics", "analysis", "arr", "revenue", "sales",
+                "pipeline", "conversion", "experiment", "ab test", "ltv", "cac",
+            ],
+            "Product Strategy": [
+                "product", "strategy", "strategic", "roadmap", "prioritization", "vision",
+                "discovery", "north star", "execution", "decision", "decisions", "bet", "bets",
+                "framework", "positioning", "segment", "segmentation", "market", "pmf",
+                "b2b", "consumer", "enterprise", "saas",
+            ],
+            "Leadership": [
+                "leadership", "leading", "team", "management", "manager", "culture", "hiring",
+                "org", "organization", "operator", "coaching", "mentorship", "1:1", "one on one",
+                "communication", "influence",
+            ],
+            "Career": [
+                "career", "skill", "skills", "development", "interview", "resume", "promotion",
+                "personal brand", "job", "role",
+            ],
+            "Engineering": [
+                "engineering", "code", "coding", "technical", "ai", "ml", "llm", "agent", "agents",
+                "dev", "developer", "architecture", "infra", "infrastructure", "api", "backend",
+                "frontend", "platform", "data", "ops", "devops", "reliability", "performance",
+                "tradeoff", "tradeoffs",
+            ],
+            "Design": [
+                "design", "ux", "ui", "user research", "research", "prototype", "prototyping",
+                "figma", "wireframe", "interaction", "usability", "craft",
+            ],
+        }
+
+        # Manual overrides for phrases that keyword heuristics miss or get wrong.
+        # These take precedence over the score-based routing below.
+        override_by_id = {
+            "startup-building": "Product Strategy",
+            "founder-lessons": "Leadership",
+            "building-teams": "Leadership",
+            "team-building": "Leadership",
+            "go-to-market-execution": "Growth",
+            "pricing-decisions": "Growth",
+            "monetization": "Growth",
+            "operator-lessons": "Leadership",
+            "strategic-decision-making": "Product Strategy",
+            "execution": "Product Strategy",
+            "product-design": "Design",
+            "user-research": "Design",
         }
 
         for topic in topics[:5]:
@@ -164,13 +208,19 @@ class Compiler:
             concept_id = self._to_id(topic)
             # Infer domain
             lt = topic.lower()
-            domain = "Uncategorized"
+            domain = None
             best_score = 0
             for dname, kws in domain_keywords.items():
                 score = sum(1 for kw in kws if kw in lt)
                 if score > best_score:
                     best_score = score
                     domain = dname
+            # Manual override wins over keyword heuristics
+            if concept_id in override_by_id:
+                domain = override_by_id[concept_id]
+            # Final fallback: default to Product Strategy rather than Uncategorized
+            if not domain:
+                domain = "Product Strategy"
 
             # Add or enrich concept node
             existing = next((n for n in self.nodes if n["id"] == concept_id and n["type"] == "concept"), None)
@@ -181,6 +231,9 @@ class Compiler:
                     gid = self._to_id(guest)
                     if gid not in existing.get("taught_by", []):
                         existing.setdefault("taught_by", []).append(gid)
+                # Manual overrides always win, even on subsequent mentions
+                if concept_id in override_by_id:
+                    existing["domain"] = override_by_id[concept_id]
             else:
                 self.nodes.append({
                     "id": concept_id,
@@ -369,7 +422,7 @@ Extract 3-8 key concepts. Focus on named frameworks, methodologies, and principl
                     "id": cid,
                     "type": "concept",
                     "title": concept.get("title", cid),
-                    "domain": concept.get("domain", "Uncategorized"),
+                    "domain": concept.get("domain") or "Product Strategy",
                     "summary": concept.get("summary", ""),
                     "confidence": concept.get("confidence", 0.8),
                     "appears_in": [source_id],
@@ -504,7 +557,7 @@ Extract 3-8 key concepts. Focus on named frameworks, methodologies, and principl
                 ))[:5]
                 meta = {
                     "title": n["title"],
-                    "domain": n.get("domain", "Uncategorized"),
+                    "domain": n.get("domain") or "Product Strategy",
                     "type": "concept",
                     "related": related,
                     "builds_on": [e["target"] for e in edges_by_source.get(n["id"], []) if e["type"] == "builds_on"][:5],

@@ -4,7 +4,6 @@ import {
   ReactFlowProvider,
   Background,
   Controls,
-  MiniMap,
   useReactFlow,
   useStoreApi,
   type Node,
@@ -14,64 +13,167 @@ import '@xyflow/react/dist/style.css'
 
 import ConceptNode from './ConceptNode'
 import GuestNode from './GuestNode'
+import CategoryNode from './CategoryNode'
 import type { GraphResponse } from '../types/graph'
 
-const nodeTypes = { concept: ConceptNode, guest: GuestNode }
+const nodeTypes = { concept: ConceptNode, guest: GuestNode, category: CategoryNode }
+
+export type ViewMode = 'overview' | 'expanded'
 
 interface Props {
   graph: GraphResponse
+  view: ViewMode
+  expandedDomain: string | null
   onNodeClick: (nodeId: string) => void
+  onCategoryClick: (domain: string) => void
   selectedNodeId: string | null
 }
 
-function GraphCanvasInner({ graph, onNodeClick, selectedNodeId }: Props) {
+const DOMAIN_PREFIX = 'domain:'
+
+/** Place items evenly on a circle centered at (0, 0). */
+function radial(n: number, radius: number, startAngle = -Math.PI / 2): { x: number; y: number }[] {
+  if (n === 0) return []
+  if (n === 1) return [{ x: 0, y: -radius }]
+  return Array.from({ length: n }, (_, i) => {
+    const a = startAngle + (2 * Math.PI * i) / n
+    return { x: Math.cos(a) * radius, y: Math.sin(a) * radius }
+  })
+}
+
+function GraphCanvasInner({
+  graph,
+  view,
+  expandedDomain,
+  onNodeClick,
+  onCategoryClick,
+  selectedNodeId,
+}: Props) {
   const rf = useReactFlow()
   const storeApi = useStoreApi()
 
-  const nodes = useMemo<Node[]>(() => {
-    return graph.nodes
-      .filter((n) => n.type !== 'source')
-      .map((n) => ({
-        id: n.id,
-        type: n.type === 'guest' ? 'guest' : 'concept',
-        position: n.position,
+  // ─── Overview: 7 category hubs on a circle ────────────────────────────────
+  const overviewNodes = useMemo<Node[]>(() => {
+    const positions = radial(graph.domains.length, 520)
+    return graph.domains.map((d, i) => ({
+      id: `${DOMAIN_PREFIX}${d.label}`,
+      type: 'category',
+      position: { x: positions[i].x - 90, y: positions[i].y - 90 },
+      data: {
+        label: d.label,
+        color: d.color,
+        count: d.node_count,
+      },
+      selected: false,
+      draggable: false,
+    }))
+  }, [graph.domains])
+
+  // ─── Expanded: hub at center, concepts inner ring, guests outer ring ──────
+  const expandedNodes = useMemo<Node[]>(() => {
+    if (!expandedDomain) return []
+    const domain = graph.domains.find((d) => d.label === expandedDomain)
+    if (!domain) return []
+
+    // Concepts belonging to this domain
+    const concepts = graph.nodes.filter(
+      (n) => n.type === 'concept' && n.domain === expandedDomain,
+    )
+
+    // Guests connected to any of those concepts (teach edges)
+    const conceptIds = new Set(concepts.map((c) => c.id))
+    const guestIdSet = new Set<string>()
+    graph.edges.forEach((e) => {
+      if (conceptIds.has(e.target)) guestIdSet.add(e.source)
+      if (conceptIds.has(e.source)) guestIdSet.add(e.target)
+    })
+    const guests = graph.nodes.filter((n) => n.type === 'guest' && guestIdSet.has(n.id))
+
+    const nodes: Node[] = []
+
+    // Central hub (larger, expanded state)
+    nodes.push({
+      id: `${DOMAIN_PREFIX}${domain.label}`,
+      type: 'category',
+      position: { x: -110, y: -110 },
+      data: {
+        label: domain.label,
+        color: domain.color,
+        count: domain.node_count,
+        expanded: true,
+      },
+      selected: false,
+      draggable: false,
+    })
+
+    // Inner ring: concept pills
+    const conceptRadius = Math.max(320, 60 + concepts.length * 18)
+    const conceptPositions = radial(concepts.length, conceptRadius, -Math.PI / 2)
+    concepts.forEach((c, i) => {
+      nodes.push({
+        id: c.id,
+        type: 'concept',
+        position: { x: conceptPositions[i].x - 100, y: conceptPositions[i].y - 30 },
         data: {
-          label: n.label,
-          domain: n.domain,
-          connections: n.connections,
-          color: n.color,
-          confidence: n.confidence,
-          known_for: n.known_for,
+          label: c.label,
+          domain: c.domain,
+          connections: c.connections,
+          color: domain.color,
+          confidence: c.confidence,
         },
-        selected: n.id === selectedNodeId,
-      }))
-  }, [graph, selectedNodeId])
-
-  const edges = useMemo<Edge[]>(() => {
-    const visibleIds = new Set(nodes.map((n) => n.id))
-    const seen = new Set<string>()
-    const out: Edge[] = []
-    graph.edges
-      .filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target) && e.source !== e.target)
-      .forEach((e, idx) => {
-        const id = `e${idx}-${e.source}->${e.target}`
-        if (seen.has(id)) return
-        seen.add(id)
-        out.push({
-          id,
-          source: e.source,
-          target: e.target,
-          style: e.type === 'contrasts_with'
-            ? { stroke: '#f97316', strokeDasharray: '6 4', strokeWidth: 2 }
-            : { stroke: '#9ca3af', strokeWidth: 1.5 },
-        })
+        selected: c.id === selectedNodeId,
+        draggable: false,
       })
-    return out
-  }, [graph, nodes])
+    })
 
-  // Force React Flow to measure all nodes + register handles.
-  // Workaround for a case where the ResizeObserver doesn't fire on initial mount
-  // (happens when the container was 0x0 when ReactFlow mounted).
+    // Outer ring: guest avatars
+    const guestRadius = Math.max(620, conceptRadius + 280)
+    const guestPositions = radial(guests.length, guestRadius, -Math.PI / 2 + 0.12)
+    guests.forEach((g, i) => {
+      nodes.push({
+        id: g.id,
+        type: 'guest',
+        position: { x: guestPositions[i].x - 40, y: guestPositions[i].y - 40 },
+        data: {
+          label: g.label,
+          domain: g.domain,
+          connections: g.connections,
+          color: g.color,
+          confidence: g.confidence,
+          known_for: g.known_for,
+        },
+        selected: g.id === selectedNodeId,
+        draggable: false,
+      })
+    })
+
+    return nodes
+  }, [graph, expandedDomain, selectedNodeId])
+
+  const nodes = view === 'overview' ? overviewNodes : expandedNodes
+
+  // Edges: overview has none. Expanded shows concept→guest teach edges as thin wires.
+  const edges = useMemo<Edge[]>(() => {
+    if (view !== 'expanded' || !expandedDomain) return []
+    const visibleIds = new Set(nodes.map((n) => n.id))
+    const out: Edge[] = []
+    graph.edges.forEach((e, idx) => {
+      if (!visibleIds.has(e.source) || !visibleIds.has(e.target)) return
+      if (e.source === e.target) return
+      out.push({
+        id: `e${idx}-${e.source}->${e.target}`,
+        source: e.source,
+        target: e.target,
+        style:
+          e.type === 'contrasts_with'
+            ? { stroke: '#f97316', strokeDasharray: '6 4', strokeWidth: 1.5, opacity: 0.6 }
+            : { stroke: '#6b7280', strokeWidth: 1, opacity: 0.45 },
+      })
+    })
+    return out
+  }, [graph, nodes, view, expandedDomain])
+
+  // Force React Flow to re-measure nodes after a view change, then fit view
   useEffect(() => {
     if (nodes.length === 0) return
     const timers: number[] = []
@@ -82,35 +184,28 @@ function GraphCanvasInner({ graph, onNodeClick, selectedNodeId }: Props) {
         const el = document.querySelector<HTMLDivElement>(`.react-flow__node[data-id="${n.id}"]`)
         if (el) updates.set(n.id, { id: n.id, nodeElement: el, force: true })
       })
-      if (updates.size > 0) {
-        state.updateNodeInternals(updates)
-      }
+      if (updates.size > 0) state.updateNodeInternals(updates)
     }
-    // Retry a few times to handle race conditions with DOM paint
-    ;[50, 200, 500].forEach((d) => {
-      timers.push(window.setTimeout(runUpdate, d))
-    })
-    timers.push(window.setTimeout(() => {
-      // ?focus=<slug1>,<slug2>,... zooms to just those nodes (used for screenshots)
-      const focusParam = new URLSearchParams(window.location.search).get('focus')
-      if (focusParam) {
-        const ids = new Set(focusParam.split(',').map((s) => s.trim()).filter(Boolean))
-        const targets = nodes.filter((n) => ids.has(n.id))
-        if (targets.length > 0) {
-          rf.fitView({ nodes: targets.map((n) => ({ id: n.id })), padding: 0.25, duration: 400 })
-          return
-        }
-      }
-      rf.fitView({ padding: 0.2, duration: 400 })
-    }, 750))
+    ;[50, 200, 500].forEach((d) => timers.push(window.setTimeout(runUpdate, d)))
+    timers.push(
+      window.setTimeout(() => {
+        rf.fitView({ padding: 0.25, duration: 500 })
+      }, 650),
+    )
     return () => timers.forEach((t) => window.clearTimeout(t))
-  }, [nodes, storeApi, rf])
+  }, [nodes, storeApi, rf, view, expandedDomain])
 
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
+      if (node.type === 'category') {
+        // Category hub: toggle expansion
+        const label = (node.data as { label: string }).label
+        onCategoryClick(label)
+        return
+      }
       onNodeClick(node.id)
     },
-    [onNodeClick],
+    [onNodeClick, onCategoryClick],
   )
 
   return (
@@ -119,25 +214,16 @@ function GraphCanvasInner({ graph, onNodeClick, selectedNodeId }: Props) {
       edges={edges}
       onNodeClick={handleNodeClick}
       nodeTypes={nodeTypes}
-      minZoom={0.1}
+      minZoom={0.2}
       maxZoom={2}
       proOptions={{ hideAttribution: true }}
       nodesDraggable={false}
       nodesConnectable={false}
       fitView
-      fitViewOptions={{ padding: 0.2 }}
+      fitViewOptions={{ padding: 0.25 }}
     >
       <Background color="#1f2937" gap={40} />
-      <Controls position="bottom-right" />
-      <MiniMap
-        nodeColor={(n) => {
-          const data = n.data as Record<string, unknown>
-          return (data?.color as string) || '#4b5563'
-        }}
-        maskColor="rgba(0,0,0,0.7)"
-        position="bottom-right"
-        style={{ marginBottom: 60 }}
-      />
+      <Controls position="bottom-right" showInteractive={false} />
     </ReactFlow>
   )
 }
