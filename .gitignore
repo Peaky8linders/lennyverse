@@ -11,6 +11,8 @@ knowledge/wiki/tensions/
 knowledge/wiki/index.md
 knowledge/wiki/log.md
 knowledge/GRAPH_REPORT.md
+knowledge/post_catalog.json
+knowledge/url_map.json
 
 # Python
 __pycache__/
