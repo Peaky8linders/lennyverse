@@ -4,6 +4,9 @@ export interface GraphNode {
   label: string
   domain: string
   confidence: number
+  support_count: number
+  newest_source: string
+  oldest_source: string
   connections: number
   position: { x: number; y: number }
   source_type: string

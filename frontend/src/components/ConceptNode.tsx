@@ -14,6 +14,8 @@ interface ConceptNodeData {
 function ConceptNode({ data, selected }: NodeProps) {
   const d = data as ConceptNodeData
   const accent = d.color || '#3b82f6'
+  // Confidence fades the node subtly — clamped so low-confidence nodes stay readable.
+  const confOpacity = Math.max(0.6, Math.min(1, d.confidence || 1))
 
   return (
     <div
@@ -22,7 +24,7 @@ function ConceptNode({ data, selected }: NodeProps) {
         bg-gray-900/90 backdrop-blur-sm shadow-xl transition-all duration-200
         ${selected ? 'ring-2 ring-white/40 scale-105' : 'hover:scale-[1.03]'}
       `}
-      style={{ borderColor: accent, minWidth: 200, maxWidth: 260 }}
+      style={{ borderColor: accent, minWidth: 200, maxWidth: 260, opacity: confOpacity }}
     >
       <Handle type="target" position={Position.Top} className="!bg-gray-600 !w-2 !h-2" />
 

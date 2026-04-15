@@ -5,6 +5,89 @@ import AskClaude from './AskClaude'
 import EpisodeSummary from './EpisodeSummary'
 import { useGuestImages } from '../hooks/useGuestImages'
 
+// --- Confidence rendering helpers ---
+
+function formatSourceDate(iso: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
+}
+
+interface ConfidenceBadgeProps {
+  confidence: number
+  support: number
+  newest: string
+  compact?: boolean
+}
+
+function ConfidenceBadge({ confidence, support, newest, compact }: ConfidenceBadgeProps) {
+  if (!support) return null
+  const pct = Math.round(confidence * 100)
+  // Color ramp: <0.4 rose, 0.4-0.7 amber, >0.7 emerald
+  const color =
+    confidence >= 0.7 ? '#34d399' : confidence >= 0.4 ? '#f59e0b' : '#f87171'
+  return (
+    <div className={compact ? 'text-xs text-gray-400' : 'mb-4'}>
+      {!compact && (
+        <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
+          <span className="uppercase tracking-wider">Confidence</span>
+          <span className="tabular-nums">{pct}%</span>
+        </div>
+      )}
+      {!compact && (
+        <div className="h-1.5 w-full bg-gray-800 rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all"
+            style={{ width: `${pct}%`, background: color }}
+          />
+        </div>
+      )}
+      <div className={`text-xs text-gray-500 ${compact ? '' : 'mt-1'}`}>
+        {support} source{support !== 1 ? 's' : ''}
+        {newest ? ` · newest ${formatSourceDate(newest)}` : ''}
+      </div>
+    </div>
+  )
+}
+
+interface TensionSideMeta {
+  label?: string
+  confidence?: number
+  support_count?: number
+  newest_source?: string
+  oldest_source?: string
+  current?: boolean
+}
+
+function TensionSideCard({ side, title }: { side: TensionSideMeta; title: string }) {
+  const confidence = Number(side.confidence ?? 0)
+  const support = Number(side.support_count ?? 0)
+  const newest = String(side.newest_source ?? '')
+  const isCurrent = Boolean(side.current)
+  return (
+    <div
+      className={
+        'rounded-lg border p-3 ' +
+        (isCurrent
+          ? 'border-emerald-500/60 bg-emerald-950/20'
+          : 'border-gray-700/60 bg-gray-900/40')
+      }
+    >
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs uppercase tracking-wider text-gray-500">{title}</span>
+        {isCurrent && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 uppercase tracking-wider">
+            current
+          </span>
+        )}
+      </div>
+      <div className="text-sm text-white font-medium mb-2 break-words">{side.label || ''}</div>
+      <ConfidenceBadge confidence={confidence} support={support} newest={newest} />
+    </div>
+  )
+}
+
 interface Props {
   nodeId: string | null
   fetchDetail: (id: string) => Promise<NodeDetail | null>
@@ -95,6 +178,29 @@ export default function DetailPanel({ nodeId, fetchDetail, onClose, onNavigate }
               </div>
             ) : detail ? (
               <>
+                {/* Confidence badge for concept / guest nodes */}
+                {(detail.type === 'concept' || detail.type === 'guest') && (
+                  <ConfidenceBadge
+                    confidence={Number(detail.frontmatter?.confidence ?? 0)}
+                    support={Number(detail.frontmatter?.support_count ?? 0)}
+                    newest={String(detail.frontmatter?.newest_source ?? '')}
+                  />
+                )}
+
+                {/* Tension nodes: side-by-side confidence comparison with "current" labeling */}
+                {detail.type === 'tension' && (detail.frontmatter?.side_a || detail.frontmatter?.side_b) && (
+                  <div className="grid grid-cols-2 gap-2 mb-4">
+                    <TensionSideCard
+                      title="Side A"
+                      side={(detail.frontmatter?.side_a as TensionSideMeta) || {}}
+                    />
+                    <TensionSideCard
+                      title="Side B"
+                      side={(detail.frontmatter?.side_b as TensionSideMeta) || {}}
+                    />
+                  </div>
+                )}
+
                 <div className="text-sm text-gray-300 leading-relaxed mb-4">
                   {detail.content || 'No summary available.'}
                 </div>

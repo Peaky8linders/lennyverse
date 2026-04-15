@@ -74,6 +74,9 @@ class GraphService:
                     id=nid, type="concept", label=meta["title"],
                     domain=domain,
                     confidence=float(meta.get("confidence", 1.0)),
+                    support_count=int(meta.get("support_count", 0) or 0),
+                    newest_source=str(meta.get("newest_source", "") or ""),
+                    oldest_source=str(meta.get("oldest_source", "") or ""),
                 ))
                 node_ids.add(nid)
 
@@ -119,6 +122,10 @@ class GraphService:
                     id=nid, type="guest", label=meta["title"],
                     domain=domains[0] if domains else "",
                     known_for=meta.get("known_for", []) or [],
+                    confidence=float(meta.get("confidence", 1.0) or 1.0),
+                    support_count=int(meta.get("support_count", 0) or 0),
+                    newest_source=str(meta.get("newest_source", "") or ""),
+                    oldest_source=str(meta.get("oldest_source", "") or ""),
                 ))
                 node_ids.add(nid)
 
