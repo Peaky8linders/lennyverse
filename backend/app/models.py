@@ -12,6 +12,9 @@ class GraphNode(BaseModel):
     label: str
     domain: str = ""
     confidence: float = 1.0
+    support_count: int = 0
+    newest_source: str = ""
+    oldest_source: str = ""
     connections: int = 0
     position: dict[str, float] = Field(default_factory=lambda: {"x": 0, "y": 0})
     source_type: str = ""

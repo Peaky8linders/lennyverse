@@ -544,6 +544,14 @@ Extract 3-8 key concepts. Focus on named frameworks, methodologies, and principl
             edges_by_source[e["source"]].append(e)
             edges_by_target[e["target"]].append(e)
 
+        # Precompute source_id -> date map so we can derive confidence scores
+        # for concept/guest/tension nodes from their backing source dates.
+        from app.services.confidence_service import score as score_confidence
+        source_dates: dict[str, str] = {}
+        for n in self.nodes:
+            if n["type"] == "source":
+                source_dates[n["id"]] = str(n.get("date", "") or "")
+
         # Concept pages
         for n in self.nodes:
             if n["type"] == "concept":
@@ -555,6 +563,8 @@ Extract 3-8 key concepts. Focus on named frameworks, methodologies, and principl
                     [e["target"] for e in edges_by_source.get(n["id"], []) if e["type"] == "contrasts_with"]
                     + [e["source"] for e in edges_by_target.get(n["id"], []) if e["type"] == "contrasts_with"]
                 ))[:5]
+                appears_in = n.get("appears_in", [])[:10]
+                conf = score_confidence([source_dates.get(s, "") for s in appears_in])
                 meta = {
                     "title": n["title"],
                     "domain": n.get("domain") or "Product Strategy",
@@ -562,9 +572,12 @@ Extract 3-8 key concepts. Focus on named frameworks, methodologies, and principl
                     "related": related,
                     "builds_on": [e["target"] for e in edges_by_source.get(n["id"], []) if e["type"] == "builds_on"][:5],
                     "contrasts_with": contrasts,
-                    "appears_in": n.get("appears_in", [])[:10],
+                    "appears_in": appears_in,
                     "taught_by": n.get("taught_by", [])[:5],
-                    "confidence": n.get("confidence", 0.8),
+                    "confidence": conf.confidence,
+                    "support_count": conf.support_count,
+                    "newest_source": conf.newest_source,
+                    "oldest_source": conf.oldest_source,
                     "last_compiled": now,
                 }
                 body = n.get("summary", f"{n['title']} - extracted from Lenny's Newsletter and Podcast.")
@@ -577,12 +590,18 @@ Extract 3-8 key concepts. Focus on named frameworks, methodologies, and principl
                 taught = list(set(
                     e["target"] for e in edges_by_source.get(n["id"], []) if e["type"] == "teaches"
                 ))
+                episodes = n.get("episodes", [])[:20]
+                conf = score_confidence([source_dates.get(s, "") for s in episodes])
                 meta = {
                     "title": n["title"],
                     "type": "guest",
                     "domains": list(set(n.get("domains", []))),
                     "known_for": taught[:10],
-                    "episodes": n.get("episodes", [])[:20],
+                    "episodes": episodes,
+                    "confidence": conf.confidence,
+                    "support_count": conf.support_count,
+                    "newest_source": conf.newest_source,
+                    "oldest_source": conf.oldest_source,
                 }
                 body = f"{n['title']} - guest on Lenny's Podcast."
                 path = self.wiki_path / "guests" / f"{n['id']}.md"
@@ -635,7 +654,14 @@ Extract 3-8 key concepts. Focus on named frameworks, methodologies, and principl
             path = self.wiki_path / "domains" / f"{did}.md"
             path.write_text(inject_frontmatter(meta, body), encoding="utf-8")
 
-        # Tension pages
+        # Tension pages — each side gets its own confidence score from its
+        # concept's backing sources; the stronger side is flagged `current`.
+        from app.services.confidence_service import score_tension
+        concept_appears_in: dict[str, list[str]] = {
+            n["id"]: (n.get("appears_in", []) or [])
+            for n in self.nodes if n["type"] == "concept"
+        }
+
         tension_edges = [e for e in self.edges if e["type"] == "contrasts_with"]
         seen = set()
         for e in tension_edges:
@@ -644,10 +670,31 @@ Extract 3-8 key concepts. Focus on named frameworks, methodologies, and principl
                 continue
             seen.add(key)
             tid = f"{key[0]}-vs-{key[1]}"[:80]
+
+            side_a_dates = [source_dates.get(s, "") for s in concept_appears_in.get(key[0], [])]
+            side_b_dates = [source_dates.get(s, "") for s in concept_appears_in.get(key[1], [])]
+            a, b = score_tension(key[0], side_a_dates, key[1], side_b_dates)
+
             meta = {
                 "title": f"{key[0]} vs {key[1]}",
                 "type": "tension",
                 "concepts": list(key),
+                "side_a": {
+                    "label": a.label,
+                    "confidence": a.score.confidence,
+                    "support_count": a.score.support_count,
+                    "newest_source": a.score.newest_source,
+                    "oldest_source": a.score.oldest_source,
+                    "current": a.current,
+                },
+                "side_b": {
+                    "label": b.label,
+                    "confidence": b.score.confidence,
+                    "support_count": b.score.support_count,
+                    "newest_source": b.score.newest_source,
+                    "oldest_source": b.score.oldest_source,
+                    "current": b.current,
+                },
             }
             body = e.get("label") or f"Tension between {key[0]} and {key[1]}"
             path = self.wiki_path / "tensions" / f"{tid}.md"

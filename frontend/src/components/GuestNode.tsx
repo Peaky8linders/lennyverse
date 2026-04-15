@@ -7,6 +7,7 @@ interface GuestNodeData {
   color: string
   known_for: string[]
   connections: number
+  confidence?: number
   id?: string
   [key: string]: unknown
 }
@@ -16,6 +17,8 @@ function GuestNode({ id, data, selected }: NodeProps) {
   const { getGuestImage } = useGuestImages()
   const imgUrl = getGuestImage(id)
   const [imgOk, setImgOk] = useState(true)
+  // Confidence fades low-support guests; clamp so they stay readable.
+  const confOpacity = Math.max(0.6, Math.min(1, d.confidence ?? 1))
 
   const initials = d.label
     .split(' ')
@@ -31,7 +34,7 @@ function GuestNode({ id, data, selected }: NodeProps) {
         flex flex-col items-center gap-2 transition-all duration-200
         ${selected ? 'scale-110' : 'hover:scale-105'}
       `}
-      style={{ visibility: 'visible' }}
+      style={{ visibility: 'visible', opacity: confOpacity }}
     >
       <Handle type="target" position={Position.Top} style={{ opacity: 0, width: 8, height: 8 }} />
       <div className="relative">
