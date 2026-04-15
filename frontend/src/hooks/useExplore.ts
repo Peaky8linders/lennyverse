@@ -2,8 +2,20 @@ import { useState, useCallback, useRef } from 'react'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
+export interface RetrievalSource {
+  node_id: string
+  node_type: string
+  title: string
+  snippet: string
+  confidence: number
+  score: number
+  bm25_rank: number | null
+  graph_rank: number | null
+}
+
 export function useExplore() {
   const [response, setResponse] = useState('')
+  const [sources, setSources] = useState<RetrievalSource[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -16,6 +28,7 @@ export function useExplore() {
     setLoading(true)
     setError(null)
     setResponse('')
+    setSources([])
 
     try {
       const res = await fetch(`${API_BASE}/api/explore`, {
@@ -37,6 +50,11 @@ export function useExplore() {
       let buffer = ''
       let accumulated = ''
 
+      // SSE frame parser: tracks the current event name so `event: sources`
+      // payloads don't get lost in the token stream. Frames are separated
+      // by a blank line; inside a frame we collect event: / data: lines.
+      let currentEvent: string | null = null
+
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
@@ -46,15 +64,32 @@ export function useExplore() {
         buffer = lines.pop() || ''
 
         for (const line of lines) {
+          if (line === '') {
+            currentEvent = null
+            continue
+          }
+          if (line.startsWith('event: ')) {
+            currentEvent = line.slice(7).trim()
+            continue
+          }
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6))
-              if (data.text) {
+              if (currentEvent === 'sources' && Array.isArray(data.sources)) {
+                setSources(data.sources as RetrievalSource[])
+              } else if (currentEvent === 'error') {
+                throw new Error(data.detail || 'Stream error')
+              } else if (data.text) {
                 accumulated += data.text
                 setResponse(accumulated)
               }
-            } catch {
-              // skip malformed JSON
+            } catch (err) {
+              // Re-throw stream errors; skip malformed JSON silently
+              if (err instanceof Error && err.message !== 'Stream error') {
+                // swallow JSON parse errors on partial frames
+              } else {
+                throw err
+              }
             }
           }
         }
@@ -71,8 +106,9 @@ export function useExplore() {
   const reset = useCallback(() => {
     abortRef.current?.abort()
     setResponse('')
+    setSources([])
     setError(null)
   }, [])
 
-  return { response, loading, error, ask, reset }
+  return { response, sources, loading, error, ask, reset }
 }
