@@ -345,7 +345,7 @@ export default function DetailPanel({ nodeId, fetchDetail, onClose, onNavigate }
                   </div>
                 )}
 
-                <AskClaude contextNodeId={detail.id} />
+                <AskClaude contextNodeId={detail.id} onNavigate={onNavigate} />
               </>
             ) : (
               <p className="text-sm text-gray-500">Node not found.</p>

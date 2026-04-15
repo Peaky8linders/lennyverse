@@ -81,6 +81,30 @@ class ExploreChunk(BaseModel):
     citations: list[str] = Field(default_factory=list)
 
 
+# --- Retrieve ---
+
+class RetrieveRequest(BaseModel):
+    query: str = Field(..., min_length=2, max_length=500)
+    top_k: int = Field(default=10, ge=1, le=50)
+
+
+class RetrievalHit(BaseModel):
+    node_id: str
+    node_type: str
+    title: str
+    snippet: str
+    confidence: float
+    score: float
+    bm25_rank: int | None = None
+    graph_rank: int | None = None
+
+
+class RetrieveResponse(BaseModel):
+    query: str
+    seeds: list[str] = Field(default_factory=list)
+    results: list[RetrievalHit] = Field(default_factory=list)
+
+
 # --- Ingest ---
 
 class IngestRequest(BaseModel):
